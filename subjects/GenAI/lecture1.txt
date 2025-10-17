@@ -1,0 +1,5 @@
+gen ai ecture1
+
+# Edit (2025-10-17 22:51:41)
+Reason: testing 
+so start testing of study-cli-hub
