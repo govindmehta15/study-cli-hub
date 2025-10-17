@@ -27,6 +27,9 @@ It allows you to **read, create, edit, and contribute** study notes for differen
 ```bash
 git clone https://github.com/govindmehta15/cli-study-hub.git
 cd cli-study-hub
+or
+gh repo clone govindmehta15/study-cli-hub
+cd cli-study-hub
 ````
 
 ### 2️⃣ Run the CLI App
