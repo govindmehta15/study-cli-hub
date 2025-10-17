@@ -25,7 +25,7 @@ It allows you to **read, create, edit, and contribute** study notes for differen
 ### 1️⃣ Clone the Repository
 
 ```bash
-git clone https://github.com/<your-username>/cli-study-hub.git
+git clone https://github.com/govindmehta15/cli-study-hub.git
 cd cli-study-hub
 ````
 
