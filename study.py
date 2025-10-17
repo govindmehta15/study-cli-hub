@@ -7,191 +7,214 @@
 # ==========================================================
 
 import os
+import sys
 import platform
-import shutil
-from datetime import datetime
+import subprocess
+import curses
 
-BASE_DIR = os.path.join(os.path.dirname(__file__), "subjects")
+# ------------------------------------------------------------------
+# Setup helper for Windows (install curses if needed)
+# ------------------------------------------------------------------
+if platform.system() == "Windows":
+    try:
+        import curses
+    except ImportError:
+        print("Installing windows-curses...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "windows-curses"])
+        import curses
 
-# ----------------------------------------------------------
-# Helper Functions
-# ----------------------------------------------------------
+# ------------------------------------------------------------------
+# Global paths
+# ------------------------------------------------------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SUBJECTS_DIR = os.path.join(BASE_DIR, "subjects")
 
-def clear_screen():
-    os.system("cls" if platform.system() == "Windows" else "clear")
-
-def pause():
-    input("\nPress Enter to continue...")
-
+# ------------------------------------------------------------------
+# Utility functions
+# ------------------------------------------------------------------
 def list_subjects():
-    subjects = [f for f in os.listdir(BASE_DIR) if os.path.isdir(os.path.join(BASE_DIR, f))]
-    subjects.sort()
-    return subjects
+    subjects = [f for f in os.listdir(SUBJECTS_DIR) if os.path.isdir(os.path.join(SUBJECTS_DIR, f))]
+    return sorted(subjects)
 
 def list_files(subject):
-    folder_path = os.path.join(BASE_DIR, subject)
-    files = [f for f in os.listdir(folder_path) if f.endswith(".txt")]
-    files.sort()
-    return files
+    path = os.path.join(SUBJECTS_DIR, subject)
+    return [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) and not f.startswith("description_")]
 
-def read_file(subject, file_name):
-    file_path = os.path.join(BASE_DIR, subject, file_name)
-    with open(file_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    return content
+# ------------------------------------------------------------------
+# Interactive Reader (Curses-based)
+# ------------------------------------------------------------------
+def read_file_interactive(file_path):
+    def draw(stdscr):
+        curses.curs_set(0)
+        stdscr.keypad(True)
 
-def edit_file(subject, file_name):
-    file_path = os.path.join(BASE_DIR, subject, file_name)
-    clear_screen()
-    print(f"Editing: {subject}/{file_name}\n{'='*40}\n")
-    with open(file_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    print(content)
-    print("\nEnter new content below (leave blank to cancel):")
-    new_content = input("\n>>> ")
+        with open(file_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
 
-    if new_content.strip():
-        reason = input("Enter reason for edit: ")
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        backup_path = file_path + ".bak"
-        shutil.copy(file_path, backup_path)
-        with open(file_path, "a", encoding="utf-8") as f:
-            f.write(f"\n\n# Edit ({timestamp})\nReason: {reason}\n{new_content}\n")
-        print("\n✅ File updated successfully and backup saved.")
-    else:
-        print("\n❌ Edit cancelled.")
-    pause()
+        current_line = 0
+        highlight_lines = set()
+        height, width = stdscr.getmaxyx()
 
+        while True:
+            stdscr.clear()
+            stdscr.addstr(0, 0, f"📖 {os.path.basename(file_path)} | ↑↓ scroll | SPACE+↑↓ highlight | q to quit", curses.A_BOLD)
+
+            for i in range(height - 2):
+                line_index = current_line + i
+                if line_index >= len(lines):
+                    break
+                line = lines[line_index].rstrip("\n")
+                if line_index in highlight_lines:
+                    stdscr.addstr(i + 1, 0, line[:width - 1], curses.A_REVERSE)
+                else:
+                    stdscr.addstr(i + 1, 0, line[:width - 1])
+
+            key = stdscr.getch()
+            if key == curses.KEY_UP and current_line > 0:
+                current_line -= 1
+            elif key == curses.KEY_DOWN and current_line < len(lines) - height + 2:
+                current_line += 1
+            elif key == ord(" "):  # highlight mode
+                subkey = stdscr.getch()
+                if subkey == curses.KEY_UP and current_line > 0:
+                    highlight_lines.add(current_line - 1)
+                    current_line -= 1
+                elif subkey == curses.KEY_DOWN and current_line < len(lines) - 1:
+                    highlight_lines.add(current_line + 1)
+                    current_line += 1
+            elif key == ord("q"):  # quit
+                break
+
+            stdscr.refresh()
+
+    curses.wrapper(draw)
+
+# ------------------------------------------------------------------
+# Edit File (with reason)
+# ------------------------------------------------------------------
+def edit_file(file_path):
+    reason = input("Enter reason for editing this file: ").strip()
+    if not reason:
+        print("❌ Edit reason is required.")
+        return
+
+    editor = os.environ.get("EDITOR", "nano" if platform.system() != "Windows" else "notepad")
+    subprocess.call([editor, file_path])
+    print(f"\n✅ Changes saved with reason: {reason}")
+
+# ------------------------------------------------------------------
+# Add New Subject
+# ------------------------------------------------------------------
 def add_subject():
-    clear_screen()
-    subject_name = input("Enter new subject name: ").strip()
-    description = input("Enter short subject description: ").strip()
-    if not subject_name:
-        print("❌ Subject name is required.")
-        pause()
+    name = input("\nEnter new subject name: ").strip()
+    if not name:
+        print("❌ Subject name cannot be empty.")
         return
-    subject_path = os.path.join(BASE_DIR, subject_name)
-    if not os.path.exists(subject_path):
-        os.makedirs(subject_path)
-        desc_file = os.path.join(subject_path, "description.txt")
-        with open(desc_file, "w", encoding="utf-8") as f:
-            f.write(f"Subject: {subject_name}\nDescription: {description}\nCreated: {datetime.now()}")
-        print(f"\n✅ Subject '{subject_name}' created successfully!")
-    else:
-        print("\n⚠️ Subject already exists.")
-    pause()
 
+    subject_path = os.path.join(SUBJECTS_DIR, name)
+    if os.path.exists(subject_path):
+        print("⚠️ Subject already exists.")
+        return
+
+    os.makedirs(subject_path)
+    description = input("Enter short description for this subject: ").strip()
+    if not description:
+        description = "No description provided."
+
+    with open(os.path.join(subject_path, f"description_{name}.txt"), "w", encoding="utf-8") as f:
+        f.write(description + "\n")
+
+    print(f"✅ Subject '{name}' added successfully!")
+
+# ------------------------------------------------------------------
+# Add New Note
+# ------------------------------------------------------------------
 def add_note(subject):
-    clear_screen()
-    print(f"Add new note under: {subject}")
-    title = input("Enter note title (file name): ").strip()
-    if not title:
-        print("❌ Title is required.")
-        pause()
+    file_name = input("Enter note filename (without extension): ").strip()
+    if not file_name:
+        print("❌ File name cannot be empty.")
         return
-    content = input("Enter note content:\n\n>>> ")
-    if not content.strip():
-        print("❌ Content cannot be empty.")
-        pause()
+    file_path = os.path.join(SUBJECTS_DIR, subject, f"{file_name}.txt")
+
+    if os.path.exists(file_path):
+        print("⚠️ A note with this name already exists.")
         return
-    file_name = title.replace(" ", "_").lower() + ".txt"
-    file_path = os.path.join(BASE_DIR, subject, file_name)
+
+    content = input("Enter brief starting content (optional, press Enter to skip): ")
     with open(file_path, "w", encoding="utf-8") as f:
-        f.write(f"# {title}\n\n{content}\n")
-    print(f"\n✅ Note '{title}' added successfully!")
-    pause()
+        if content:
+            f.write(content + "\n")
 
-# ----------------------------------------------------------
+    print(f"✅ Note '{file_name}.txt' created successfully in '{subject}'.")
+    choice = input("Do you want to edit it now? (y/n): ").strip().lower()
+    if choice == "y":
+        edit_file(file_path)
+
+# ------------------------------------------------------------------
 # CLI Navigation
-# ----------------------------------------------------------
-
-def subject_menu():
+# ------------------------------------------------------------------
+def main_menu():
     while True:
-        clear_screen()
         subjects = list_subjects()
-        print("📘 All Subjects:\n")
-        for i, s in enumerate(subjects, start=1):
-            print(f"[{i}] {s}")
-        print("\nCommands:")
-        print(" open <id>  → open subject folder")
-        print(" add        → add new subject")
-        print(" exit       → quit program")
+        print("\n📚 Subjects Available:")
+        for i, subject in enumerate(subjects, 1):
+            print(f"{i}. {subject}")
+        print("\na. ➕ Add new subject")
+        print("0. Exit")
 
-        cmd = input("\n> ").strip().split()
-
-        if not cmd:
-            continue
-
-        if cmd[0] == "open":
-            if len(cmd) < 2 or not cmd[1].isdigit() or int(cmd[1]) > len(subjects):
-                print("❌ Invalid subject number.")
-                pause()
-                continue
-            subject = subjects[int(cmd[1]) - 1]
-            topic_menu(subject)
-
-        elif cmd[0] == "add":
-            add_subject()
-
-        elif cmd[0] == "exit":
-            clear_screen()
-            print("👋 Exiting Study CLI Hub. Keep Learning!")
+        choice = input("\nEnter choice: ").strip().lower()
+        if choice == "0":
+            print("👋 Exiting CLI Study Hub.")
             break
-
+        elif choice == "a":
+            add_subject()
+        elif choice.isdigit() and 1 <= int(choice) <= len(subjects):
+            subject_menu(subjects[int(choice) - 1])
         else:
-            print("❌ Unknown command.")
-            pause()
+            print("❌ Invalid choice, try again.")
 
-def topic_menu(subject):
+def subject_menu(subject):
     while True:
-        clear_screen()
         files = list_files(subject)
-        print(f"📂 Subject: {subject}\n")
-        for i, f in enumerate(files, start=1):
-            print(f"[{i}] {f}")
-        print("\nCommands:")
-        print(" read <id>  → read note file")
-        print(" edit <id>  → edit file (with reason)")
-        print(" add        → add new note")
-        print(" back       → go back to subjects")
+        print(f"\n📖 Notes in '{subject}':")
+        for i, file in enumerate(files, 1):
+            print(f"{i}. {file}")
+        print("\na. ➕ Add new note")
+        print("b. 🔙 Back to subjects")
 
-        cmd = input("\n> ").strip().split()
-        if not cmd:
-            continue
-
-        if cmd[0] == "read":
-            if len(cmd) < 2 or not cmd[1].isdigit() or int(cmd[1]) > len(files):
-                print("❌ Invalid file number.")
-                pause()
-                continue
-            file_name = files[int(cmd[1]) - 1]
-            clear_screen()
-            print(f"📖 {subject}/{file_name}\n{'='*40}\n")
-            print(read_file(subject, file_name))
-            pause()
-
-        elif cmd[0] == "edit":
-            if len(cmd) < 2 or not cmd[1].isdigit() or int(cmd[1]) > len(files):
-                print("❌ Invalid file number.")
-                pause()
-                continue
-            file_name = files[int(cmd[1]) - 1]
-            edit_file(subject, file_name)
-
-        elif cmd[0] == "add":
+        choice = input("\nEnter file number or command: ").strip().lower()
+        if choice == "b":
+            break
+        elif choice == "a":
             add_note(subject)
-
-        elif cmd[0] == "back":
-            return
-
+        elif choice.isdigit() and 1 <= int(choice) <= len(files):
+            file_path = os.path.join(SUBJECTS_DIR, subject, files[int(choice) - 1])
+            file_action_menu(file_path)
         else:
-            print("❌ Unknown command.")
-            pause()
+            print("❌ Invalid choice, try again.")
 
-# ----------------------------------------------------------
+def file_action_menu(file_path):
+    while True:
+        print(f"\n📘 File: {os.path.basename(file_path)}")
+        print("1. Read file")
+        print("2. Edit file")
+        print("b. Back to subject")
+        choice = input("Enter choice: ").strip().lower()
+        if choice == "1":
+            read_file_interactive(file_path)
+        elif choice == "2":
+            edit_file(file_path)
+        elif choice == "b":
+            break
+        else:
+            print("❌ Invalid choice, try again.")
+
+# ------------------------------------------------------------------
 # Entry Point
-# ----------------------------------------------------------
+# ------------------------------------------------------------------
 if __name__ == "__main__":
-    if not os.path.exists(BASE_DIR):
-        os.makedirs(BASE_DIR)
-    subject_menu()
+    if not os.path.exists(SUBJECTS_DIR):
+        os.makedirs(SUBJECTS_DIR)
+    print("📖 Welcome to CLI Study Hub (Open Source Notes Sharing)\n")
+    main_menu()
+
