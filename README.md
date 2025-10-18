@@ -56,24 +56,29 @@ git clone https://github.com/govindmehta15/cli-study-hub.git
 cd cli-study-hub
 ````
 
-### 2️⃣ Install Dependencies
+### 2️⃣ Install ALL Dependencies (Required)
 
-**Option A: Automatic Installation (Recommended)**
+**Option A: Complete Setup (Recommended)**
+```bash
+python3 setup.py
+```
+
+**Option B: Quick Install**
 ```bash
 python3 install.py
 ```
 
-**Option B: Using requirements.txt**
+**Option C: Using requirements.txt**
 ```bash
 pip install -r requirements.txt
 ```
 
-**Option C: Manual Installation**
+**Option D: Manual Installation**
 ```bash
 pip install rich PyPDF2 python-docx getch lxml
 ```
 
-> 💡 **Dependencies**: `rich` → beautiful CLI, `PyPDF2` → PDF preview, `python-docx` → DOCX preview, `getch` → cross-platform key input, `lxml` → XML processing for Word docs.
+> 🎯 **Important**: ALL dependencies are automatically installed when you run the application, ensuring support for every file format without errors!
 
 ### 3️⃣ Run the CLI App
 
@@ -123,7 +128,9 @@ python3 study.py
 - **Status Checking**: Shows repository status and uncommitted changes
 
 ### 🤖 **Full Automation**
-- **Dependency Management**: Auto-installs missing packages on startup
+- **Complete Dependency Installation**: Installs ALL packages on startup (no missing dependencies)
+- **Zero Configuration**: Works immediately after cloning from GitHub
+- **Universal File Support**: Every file format works without errors
 - **Application Restart**: Automatically restarts after installing dependencies
 - **Error Recovery**: Graceful handling of all errors and edge cases
 - **Cross-Platform**: Works on Windows, macOS, and Linux

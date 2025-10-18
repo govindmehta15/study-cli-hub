@@ -7,21 +7,26 @@ from rich.prompt import Prompt
 from rich.text import Text
 from rich.align import Align
 
-# Check and install dependencies automatically
+# Force install ALL dependencies on startup
 try:
-    from dependency_checker import check_all_dependencies, install_missing_dependencies
-    if not check_all_dependencies():
-        console = Console()
-        console.print(Panel("[bold yellow]🔧 Installing missing dependencies automatically...[/bold yellow]", expand=False))
-        if install_missing_dependencies():
-            console.print(Panel("[bold green]✅ All dependencies installed! Restarting application...[/bold green]", expand=False))
-            # Restart the application
-            os.execv(sys.executable, [sys.executable] + sys.argv)
-        else:
-            console.print(Panel("[bold red]❌ Failed to install dependencies. Please install manually.[/bold red]", expand=False))
-            sys.exit(1)
+    from dependency_checker import force_install_all_dependencies
+    console = Console()
+    console.print(Panel("[bold cyan]🚀 CLI Study Hub - Ensuring All Dependencies[/bold cyan]", expand=False))
+    
+    if not force_install_all_dependencies():
+        console.print(Panel("[bold red]❌ Failed to install dependencies. Please check your internet connection.[/bold red]", expand=False))
+        sys.exit(1)
+    
+    console.print(Panel("[bold green]✅ All dependencies ready! Starting application...[/bold green]", expand=False))
+    
 except ImportError:
     print("Warning: dependency_checker.py not found")
+    # Fallback: try to install requirements.txt
+    try:
+        import subprocess
+        subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
+    except:
+        print("Failed to install dependencies automatically")
 
 from file_viewer import view_file_rich
 from file_uploader import upload_file

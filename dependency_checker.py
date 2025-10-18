@@ -87,6 +87,41 @@ def update_dependencies():
     
     return True
 
+def force_install_all_dependencies():
+    """Force install ALL dependencies regardless of current status"""
+    dependencies = [
+        ("rich", "rich", "Beautiful CLI interface"),
+        ("PyPDF2", "PyPDF2", "PDF file reading"),
+        ("python-docx", "docx", "Word document reading"),
+        ("getch", "getch", "Cross-platform key input"),
+        ("lxml", "lxml", "XML processing for Word docs")
+    ]
+    
+    console.print("[yellow]🔧 Installing/updating all dependencies...[/yellow]")
+    console.print("[dim]This ensures all packages are available for any file format[/dim]")
+    console.print()
+    
+    all_success = True
+    
+    for package, import_name, description in dependencies:
+        console.print(f"[yellow]Installing {package}...[/yellow]")
+        success, message = install_dependency(package)
+        if success:
+            console.print(f"[green]✅ {package}: {message}[/green]")
+        else:
+            console.print(f"[red]❌ {package}: {message}[/red]")
+            all_success = False
+    
+    console.print()
+    if all_success:
+        console.print("[green]🎉 All dependencies installed successfully![/green]")
+        console.print("[dim]You can now open any file format without errors[/dim]")
+    else:
+        console.print("[red]⚠️ Some dependencies failed to install[/red]")
+        console.print("[yellow]The application will still work, but some file types may not be supported[/yellow]")
+    
+    return all_success
+
 def check_all_dependencies():
     """Check all required dependencies"""
     dependencies = [
