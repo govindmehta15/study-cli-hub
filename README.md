@@ -1,194 +1,269 @@
-# 🧠 CLI Study Hub — Open Source Study Notes CLI
-
-Welcome to **CLI Study Hub**, an open-source command-line based study companion for learners, students, and contributors.  
-It allows you to **read, create, edit, and contribute** study notes for different subjects — all from your terminal.
-
-> 📚 The goal: To build a **community-driven digital notebook** that works right inside your CLI — lightweight, fast, and accessible for everyone.
+# 🧠 CLI Study Hub — v2.0  
+### _A community-driven command-line learning platform_
 
 ---
 
-## 🚀 Features
+## 🚀 Overview
 
-✅ **Cross-platform** — works on Windows, macOS, and Linux  
-✅ **Interactive reading** — smooth scrolling, arrow-key navigation, highlights  
-✅ **Add new subjects** — with a short description  
-✅ **Add new notes** — directly from the CLI  
-✅ **Edit notes with reason tracking** — so contributors can explain updates  
-✅ **Simple navigation** — serial-number access, easy “back” commands  
-✅ **Open-source collaboration** — clone, study, contribute, and share  
-✅ **Git-friendly** — all text-based content, easy to sync and version control  
+**CLI Study Hub v2** is an upgraded open-source **Command Line Interface (CLI)** application for learners, contributors, and developers who love minimal, distraction-free studying — right from their terminal.
+
+In **Version 2**, you can:
+- Create your **own user folder** to maintain private or personalized notes.
+- Access **global subjects** shared by the community.
+- Work in a **GitHub-synced environment**, with recommended manual sync commands.
+- Enjoy a **more interactive CLI** experience using natural commands like `study physics`, `learn 1`, or `edit 2`.
+
+> 🌍 “Built for learners, by learners — open, collaborative, and terminal-friendly.”
 
 ---
 
-## 💡 How to Use
+## ✨ What's New in v2.0
 
-### 1️⃣ Clone the Repository
+| Feature | Description |
+|----------|-------------|
+| 👤 **User-specific notes** | Create user folders with subjects and notes inside your username directory. |
+| 🧭 **Interactive commands** | Use words like `study`, `read`, `learn`, `edit`, `open` instead of just numbers. |
+| 🔄 **GitHub Sync Recommendations** | App suggests `git pull` at startup and `git push` when exiting for smooth sync. |
+| 💬 **Enhanced CLI UX** | Clear layout, borders, emojis, color-coded highlights, and easy navigation. |
+| 🧱 **Mixed structure** | Community-wide subjects exist at the root level; user-specific subjects live inside user folders. |
+| 🛠️ **Smart subject handling** | Add, edit, or view notes dynamically with confirmations and activity logs. |
 
+---
+
+## 💡 Installation & Setup Guide
+
+### 🪟 Windows
 ```bash
-git clone https://github.com/govindmehta15/cli-study-hub.git
+# Step 1: Clone repository
+git clone https://github.com/govindmehta15/study-cli-hub.git
 cd cli-study-hub
-or
-gh repo clone govindmehta15/study-cli-hub
-cd cli-study-hub
+
+# Step 2: Install dependencies
+pip install windows-curses
+
+# Step 3: Run the app
+python study.py
 ````
 
-### 2️⃣ Run the CLI App
+### 🍎 macOS / 🐧 Linux
+
+```bash
+# Step 1: Clone repository
+git clone https://github.com/<your-username>/cli-study-hub.git
+cd cli-study-hub
+
+# Step 2: Run the app directly
+python3 study.py
+```
+
+---
+
+## 🧭 Usage Guide
+
+### 🏁 Start the App
 
 ```bash
 python study.py
 ```
 
-> 💡 If you’re on **Windows**, and it asks for `windows-curses`, it will install it automatically the first time you run.
+### 🧍 Create or Choose User
+
+* When you start, you’ll be asked:
+
+  > “Enter your username (or press Enter to use Global Mode):”
+* If you enter `govind`, it creates/loads `/subjects/govind/`
+* You can still access public/global notes in `/subjects/`
 
 ---
 
-## 🧭 CLI Commands & Workflow
+## ⚙️ Core Commands
 
 ### 🏠 Main Menu
 
-* `1, 2, 3...` → Open subject by number
-* `a` → Add new subject
-* `0` → Exit
+| Command           | Action                                  |
+| ----------------- | --------------------------------------- |
+| `study <subject>` | Opens a subject (e.g., `study Physics`) |
+| `learn <number>`  | Opens subject by number                 |
+| `create subject`  | Adds a new subject                      |
+| `list`            | Shows all available subjects            |
+| `switch user`     | Change to another user’s folder         |
+| `exit`            | Exits the CLI app safely                |
 
-### 📘 Inside Subject
+---
 
-* `1, 2, 3...` → Open a note file
-* `a` → Add new note
-* `b` → Go back to subjects
+### 📘 Inside a Subject
+
+| Command       | Action                   |
+| ------------- | ------------------------ |
+| `read <note>` | Open a note file         |
+| `new note`    | Add a new note           |
+| `edit <note>` | Edit a note file         |
+| `back`        | Go back to subjects list |
+
+---
 
 ### 📖 Reading Mode
 
-* `↑` / `↓` → Scroll through file
-* `SPACE + ↑/↓` → Highlight lines
-* `q` → Quit reading mode
-
-### ✏️ Editing
-
-* Choose “Edit file”
-* Enter **edit reason**
-* File opens in your default editor (`nano` / `notepad`)
-* Save and close → Your change is recorded with reason
+| Key           | Function                      |
+| ------------- | ----------------------------- |
+| `↑` / `↓`     | Scroll line by line           |
+| `SPACE + ↑/↓` | Highlight text                |
+| `q`           | Quit reading mode             |
+| `r`           | Refresh view                  |
+| `/`           | Search within file            |
+| `h`           | Show help guide inside reader |
 
 ---
 
-## 🌱 Adding New Content
-
-### ➕ Add a New Subject
-
-When you select `a` from the main menu:
-
-1. Enter subject name
-2. Add a **short description**
-3. A new folder and `description_subject.txt` file will be created
-
-### ➕ Add a New Note
-
-Inside any subject:
-
-1. Select `a` to add a note
-2. Enter note filename (e.g., `chapter1` → creates `chapter1.txt`)
-3. Add brief starting content (optional)
-4. Start editing directly
-
----
-
-## 🧩 Folder Structure
+## 🌱 File & Folder Structure
 
 ```
 cli-study-hub/
 │
 ├── study.py                  # Main CLI script
-├── subjects/                 # All subjects stored here
-│   ├── Physics/
-│   │   ├── description_Physics.txt
-│   │   ├── chapter1.txt
-│   │   └── chapter2.txt
-│   ├── Maths/
-│   │   ├── description_Maths.txt
-│   │   └── integration.txt
-│   └── ...
+├── subjects/                 # Contains all study materials
+│   ├── global/               # Global open notes for all users
+│   │   ├── Physics/
+│   │   └── Maths/
+│   ├── govind/               # User-specific folder
+│   │   ├── Physics/
+│   │   │   ├── description_Physics.txt
+│   │   │   └── chapter1.txt
+│   │   └── AI/
+│   │       └── intro.txt
+│   └── other_users/          # More user folders
 └── README.md
 ```
 
 ---
 
-## 👥 Contribution Guide
+## 🧩 GitHub Sync Recommendations
 
-We welcome contributions from everyone! 🎉
+Since multiple contributors may edit the same notes, follow this safe **manual sync workflow**:
 
-1. **Fork** the repository
-2. **Clone** your fork
-3. **Add new subjects or notes** through the CLI
-4. **Commit** with a meaningful message
-5. **Push** to your fork and open a **Pull Request**
+### 🕐 Before Starting
 
-> 🔍 Make sure your notes are clear, accurate, and follow a consistent format for others to understand.
+```bash
+git pull
+```
+
+> This ensures you have the latest community updates.
+
+### 🧠 While Working
+
+You can freely add/edit subjects and notes using CLI commands.
+
+### 🏁 Before Exiting
+
+The app reminds you:
+
+```bash
+🔄 Tip: To sync your changes to GitHub:
+git add .
+git commit -m "Updated notes by <your-username>"
+git push
+```
+
+> 🔐 Keep your personal notes in your own folder (e.g., `/subjects/govind/`) to avoid merge conflicts.
 
 ---
 
-## 🧾 Example Flow
+## 💬 Example CLI Session
 
 ```bash
 $ python study.py
-📚 Subjects Available:
+Welcome to CLI Study Hub 📘
+Enter your username (press Enter for Global Mode): govind
+
+✨ Hello, Govind! Your personal study folder is ready.
+
+Available subjects:
 1. Physics
-2. Maths
-a. Add new subject
-0. Exit
+2. AI
+Type 'study Physics' or 'learn 1' to open.
+> study Physics
 
-Enter choice: 1
-📖 Notes in 'Physics':
+📖 Notes in Physics:
 1. chapter1.txt
-a. Add new note
-b. Back to subjects
+2. waves.txt
+Type 'read waves' or 'edit chapter1'
+> read waves
 ```
-
-Then read, highlight, and enjoy learning directly from your terminal ✨
-
----
-
-## 🌐 For Non-CLI Users
-
-> 💬 Don’t want to use the CLI?
-
-No problem!
-You can still **browse all study notes directly on GitHub** inside the `/subjects` folder.
-Each subject has its **description file** and **individual notes**, all in clean, readable `.txt` format.
-
-Perfect for quick reading or sharing links — even on mobile 📱.
 
 ---
 
 ## 🧰 Requirements
 
-* Python ≥ 3.7
-* Git (for cloning)
-* Terminal / Command Prompt access
+| Tool          | Version                        |
+| ------------- | ------------------------------ |
+| Python        | ≥ 3.7                          |
+| Git           | Recommended for syncing        |
+| Windows users | `windows-curses` auto-installs |
 
-*(Optional: `windows-curses` — auto-installed for Windows)*
+---
+
+## 👥 Contribution Guide
+
+We ❤️ contributions!
+
+1. Fork the repository
+2. Create your user folder (e.g., `/subjects/alex/`)
+3. Add new notes or subjects
+4. Commit your changes
+5. Push and open a Pull Request
+
+> ✏️ Use clear titles and commit messages like:
+>
+> ```
+> Added 'AI Basics' notes under user Govind
+> ```
+
+---
+
+## 🌐 For Non-CLI Users
+
+Not a CLI fan? No worries!
+
+You can:
+
+* Browse all notes on GitHub → `/subjects/`
+* Open `.txt` files directly in your browser
+* Download subject folders for offline reading
+
+Perfect for quick reference or mobile learning. 📱
+
+---
+
+## 🧾 Example Git Commands Summary
+
+| Action              | Command                        |
+| ------------------- | ------------------------------ |
+| Pull latest updates | `git pull`                     |
+| Stage all changes   | `git add .`                    |
+| Commit changes      | `git commit -m "Your message"` |
+| Push updates        | `git push`                     |
+
+> ⚠️ *Note:* Always pull before you push to avoid conflicts.
 
 ---
 
 ## ❤️ About the Project
 
-CLI Study Hub is an **open-source educational project** built to promote learning through collaboration.
-It’s designed to let anyone:
+**CLI Study Hub v2** is an open-source educational initiative by **[Govind Mehta](https://github.com/govindmehta15)** 🇮🇳
+It aims to make collaborative note-sharing **simple, lightweight, and community-powered** — accessible through any terminal.
 
-* Create structured subject-wise notes
-* Study efficiently from the terminal
-* Contribute and learn together
-
-> 🌍 Built for learners, by learners — one note at a time.
+> 🌱 “Empowering students to study, share, and grow — one note at a time.”
 
 ---
 
-## 📧 Author & Community
+## ⭐ Support & Community
 
-**Created by:** [Govind Mehta](https://github.com/govindmehta15)
-SOFTWARE DEVELOPER & Tech and Product Lead at ElectraWheeler
-📍 India 🇮🇳
+If you like this project:
 
-If you like this project, ⭐ **star it on GitHub** and share it with your study community!
-Let’s make learning simpler, faster, and truly open-source. 🌱
+* 🌟 Star it on GitHub
+* 🧠 Contribute new subjects
+* 💬 Share it with your learning groups
 
-```
+**Join the open-source learning movement today!**
+
+
