@@ -75,9 +75,17 @@ pip install rich PyPDF2 python-docx getch lxml
 
 ### 3️⃣ Run the CLI App
 
+**Option A: Smart Startup (Recommended)**
 ```bash
-python study.py
+python3 start.py
 ```
+
+**Option B: Direct Start**
+```bash
+python3 study.py
+```
+
+> 🎯 **Smart Features**: Auto-installs dependencies, auto-syncs with GitHub, auto-pushes changes on exit!
 
 ---
 
@@ -106,10 +114,17 @@ python study.py
 - `h` — Show help
 - `q` — Quit reader
 
-### 🔄 **GitHub Integration**
-- **Start**: Recommends `git pull --rebase` to fetch updates
-- **Exit**: Reminds to run `git add . && git commit -m 'Update notes' && git push`
-- **Status**: Shows uncommitted changes and repository status
+### 🔄 **Automatic GitHub Integration**
+- **Auto-Pull**: Automatically pulls latest changes on startup
+- **Auto-Push**: Automatically commits and pushes changes on exit
+- **Signal Handling**: Gracefully saves changes even if interrupted (Ctrl+C)
+- **Status Checking**: Shows repository status and uncommitted changes
+
+### 🤖 **Full Automation**
+- **Dependency Management**: Auto-installs missing packages on startup
+- **Application Restart**: Automatically restarts after installing dependencies
+- **Error Recovery**: Graceful handling of all errors and edge cases
+- **Cross-Platform**: Works on Windows, macOS, and Linux
 
 ### 🏠 Main Menu
 
