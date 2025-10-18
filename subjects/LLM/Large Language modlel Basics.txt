@@ -1,0 +1,188 @@
+Large Language Models Basics
+
+🧠 Lecture 2 — Understanding Large Language Models: Core Concepts
+
+Instructor: Dr. Raj Dander, PhD, Massachusetts Institute of Technology
+Theme: What makes an LLM “large”, powerful, and different from traditional NLP.
+
+📌 1. What is a Large Language Model (LLM)?
+
+Definition:
+A Large Language Model is a deep neural network designed to:
+
+Understand
+
+Generate
+
+Respond to human-like text.
+
+Core: Neural network with input → hidden layers → output.
+
+Inspired by the human brain’s circuitry (symbolic sense).
+
+Applications:
+
+Text generation
+
+Summarization
+
+Q&A
+
+Sentiment analysis
+
+Code generation, and more.
+
+✅ Example: ChatGPT responding conversationally to human prompts.
+
+📏 2. Why “Large” in LLM?
+
+“Large” refers to number of parameters in the model.
+
+Earlier NLP models: Thousands to millions of parameters.
+LLMs: Billions to trillions of parameters.
+
+Model	Parameters
+GPT-3 Small	125M
+GPT-3 Medium	350M
+GPT-3 Large	760M
+GPT-3 13B	13B
+GPT-3 175B	175B
+
+Growth pattern:
+
+GPT-1 → GPT-2: 10× increase
+
+GPT-2 → GPT-3: 100× increase
+
+Token size also increased (512 → 2048).
+
+Trend: From ~100 params in 1950s to trillions today.
+
+🗣️ 3. LLMs vs Traditional NLP Models
+Earlier NLP	Modern LLMs
+Task-specific models (e.g., translation only)	Single architecture can handle multiple tasks
+Rule-based / template-driven	Generative, adaptive
+Narrow application scope	Broad, flexible
+Hard to generate custom outputs	Natural conversational generation (e.g., drafting emails)
+🧂 4. The “Secret Sauce” — Transformer Architecture
+
+Breakthrough: Attention Is All You Need (2017) by Google Brain.
+
+📄 Over 100,000 citations.
+
+Key idea: Self-attention mechanism → model focuses on relevant parts of input efficiently.
+
+Structure involves:
+
+Input embeddings
+
+Multi-head self-attention
+
+Feed-forward networks
+
+Positional encodings
+
+Transformers enable LLMs to:
+
+Scale effectively
+
+Handle long text dependencies
+
+Train on massive data
+
+📝 Upcoming lectures will break this down in detail.
+
+🧭 5. Terminology Confusion: AI vs ML vs DL vs LLM vs GenAI
+
+A useful hierarchy:
+
+Artificial Intelligence (AI)
+└── Machine Learning (ML)
+    └── Deep Learning (DL)
+        └── Large Language Models (LLMs)
+
+
+AI: Any rule-based or learning system showing “intelligence.”
+
+Example: Rule-based flight chatbot.
+
+ML: Systems that learn from data (e.g., decision trees, regression).
+
+DL: ML subset using neural networks (e.g., CNNs, RNNs, Transformers).
+
+LLM: Deep learning models specialized for language/text.
+
+Generative AI:
+Combines LLM + DL to create new content in multiple modalities (text, image, video, audio).
+
+Example: DALL·E + ChatGPT.
+
+🛠️ 6. Applications of LLMs
+
+Conversational agents
+
+Code generation
+
+Summarization and writing aids
+
+Knowledge retrieval & reasoning
+
+Education and content creation
+
+Domain-specific copilots (medical, legal, logistics, etc.)
+
+🧪 Post-Lecture Research Tasks
+
+To deepen your understanding, explore the following:
+
+Read the Transformer Paper:
+
+Title: Attention Is All You Need (2017)
+
+Focus on sections: Positional Encoding, Scaled Dot-Product Attention.
+
+Explore Parameter Scaling:
+
+Compare GPT-2 vs GPT-3 parameter counts.
+
+Research impact of model scaling on performance.
+
+Hands-on:
+
+Build a tiny text generation model using PyTorch or TensorFlow.
+
+Understand tokenization and embeddings.
+
+Terminology Mapping Exercise:
+
+List 3 tools/products under each: AI, ML, DL, LLM, and GenAI.
+
+Example:
+
+AI → Rule-based chatbot
+
+ML → Spam filter
+
+DL → CNN image classifier
+
+LLM → GPT models
+
+GenAI → Text-to-image systems
+
+Visualization:
+
+Draw your own hierarchy diagram for AI–ML–DL–LLM–GenAI.
+
+Mark examples and applications inside each layer.
+
+📝 Key Takeaways
+
+LLMs = deep neural networks specialized for language tasks.
+
+“Large” = billions/trillions of parameters.
+
+Transformer = core architecture enabling scale & performance.
+
+Clear understanding of AI–ML–DL–LLM–GenAI hierarchy avoids confusion.
+
+LLMs can perform a wide range of language tasks using a single architecture.

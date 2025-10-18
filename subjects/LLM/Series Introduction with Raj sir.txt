@@ -1,0 +1,189 @@
+building LLM from scratch
+
+📘 Lecture 1 Notes
+
+Course Title: Build a Large Language Model from Scratch
+Instructor: Dr. Raj Dander
+Institutional Background:
+
+B.Tech, Indian Institute of Technology Madras (2017)
+
+PhD, Massachusetts Institute of Technology (2022)
+
+Mission: Make AI accessible to everyone through free, beginner-friendly content.
+
+🧑‍🏫 1. Course Introduction
+
+Goal of the series:
+To teach how to build a large language model (LLM) from scratch, starting from the basics, without assuming any prior deep knowledge.
+
+Motivation:
+
+LLMs and generative AI are transforming industries.
+
+Most learners jump directly to applications without understanding the core concepts.
+
+Building an LLM from scratch helps you gain confidence and deep understanding.
+
+Philosophy of the course:
+
+Teach everything step by step (nuts and bolts).
+
+Use detailed lecture notes + free video lectures.
+
+No shortcuts—solid foundation first.
+
+🕰️ 2. Evolution of LLMs — A Look Back
+
+Early NLP example: ELIZA (1960s)
+
+A chatbot therapist program.
+
+Limited understanding — repeated or generic responses.
+
+Today: ChatGPT
+
+Gives relevant, useful, structured answers.
+
+Illustrates how far LLMs have evolved.
+
+🌍 3. Generative AI and LLMs Today
+
+Major advancement:
+
+Open-source vs closed-source LLMs.
+
+Open-source models like LLaMA 3.1 have achieved performance close to GPT-4.
+
+Closed-source: Not fully transparent (e.g., OpenAI models).
+
+Open-source: Architecture and weights are public — good for learners.
+
+Generative AI covers more than text:
+
+Video
+
+Audio
+
+Images
+
+3D Models
+
+Example: AI-generated videos and tools that automate tasks like MCQ generation for education.
+
+📈 4. Growing Job Market
+
+Generative AI & LLM skills are in very high demand.
+
+Job opportunities are expected to grow 5–6× in the next 5 years.
+
+📚 5. Learning Gaps in Existing Courses
+
+Most online courses focus on:
+
+App deployment using tools like LangChain.
+
+Not on building core LLM architecture.
+
+Lack of structured, beginner-friendly, fundamental courses.
+
+📖 6. Reference Material for the Course
+
+Primary book: Build a Large Language Model (From Scratch) by Sebastian Raschka.
+
+48 pages.
+
+Will be converted into 50–60 lectures.
+
+Final notes expected to be 200–300 pages.
+
+🧠 7. Course Plan & Goals
+
+Build your own GPT-like model from scratch.
+
+Understand every concept (e.g., key-query-value, positional encoding).
+
+Be able to explain LLM internals confidently in interviews.
+
+Focus on:
+
+Fundamentals
+
+Architecture understanding
+
+Practical building
+
+Real-world applications after the core foundation is strong.
+
+📝 8. What to Expect in Next Lectures
+
+Upcoming Topics:
+
+Introduction to LLMs
+
+Stages of building an LLM
+
+Fundamentals of tokenization, embeddings, attention, transformers, etc.
+
+Gradually move from theory → coding → building a working model.
+
+✨ Extra Notes (Post-Class Understanding)
+🧭 Why Understanding LLMs from Scratch Matters
+
+If you only use LLMs (via APIs or prebuilt tools), your knowledge is limited.
+
+If you build an LLM, you can:
+
+Customize models for specific tasks.
+
+Optimize cost and performance.
+
+Stand out in interviews and projects.
+
+🧠 Key Concepts to Review for Next Class
+
+What is a Large Language Model (LLM)?
+
+A neural network trained on massive text data to generate human-like language.
+
+Examples: GPT series, LLaMA, Claude.
+
+Generative AI vs LLMs:
+
+Generative AI is broader (covers text, audio, video, images).
+
+LLMs focus on text generation and understanding.
+
+Open-source vs Closed-source Models:
+
+Open-source (e.g., LLaMA): Accessible, transparent, customizable.
+
+Closed-source (e.g., GPT-4): Limited access but often more refined.
+
+Applications of LLMs:
+
+Education, customer service, healthcare, content creation, programming assistance, etc.
+
+🧰 Suggested Preparation for Next Lecture
+
+Skim through the basic concepts of:
+
+NLP history and early chatbot systems like ELIZA.
+
+Transformer architecture (at a very high level).
+
+Explore what tokenization means.
+
+Look up the author Sebastian Raschka’s book overview to familiarize yourself.
+
+✅ Summary of Lecture 1:
+
+Course sets a strong foundational path to build your own LLM.
+
+Shows why learning internals first is critical.
+
+Introduces evolution from early chatbots → GPT era.
+
+Highlights importance of open-source learning and the massive job opportunity in this field.
+
+Sets expectations for detailed, structured, and beginner-friendly upcoming sessions.
