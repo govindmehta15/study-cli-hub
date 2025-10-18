@@ -281,6 +281,27 @@ def view_archive_info(path, filename, ext):
         console.print(f"[red]Error reading archive file: {e}[/red]")
         input("Press Enter to continue...")
 
+def validate_word_document(path):
+    """Validate if a Word document can be read"""
+    try:
+        # Try to open the document
+        doc = docx.Document(path)
+        
+        # Check if document has any content
+        has_text = any(para.text.strip() for para in doc.paragraphs)
+        has_tables = len(doc.tables) > 0
+        
+        return True, "Valid document", has_text, has_tables
+        
+    except Exception as e:
+        error_msg = str(e)
+        if "Package not found" in error_msg:
+            return False, "Document structure corrupted or encrypted", False, False
+        elif "lxml" in error_msg.lower():
+            return False, "Missing lxml dependency", False, False
+        else:
+            return False, f"Document error: {error_msg}", False, False
+
 def view_file_rich(user_folder, subject, filename, editable=False):
     """Main file viewer function - handles ALL file types in CLI"""
     path = os.path.join("subjects", user_folder, subject, filename) if user_folder else os.path.join("subjects", subject, filename)
@@ -353,25 +374,83 @@ def view_file_rich(user_folder, subject, filename, editable=False):
                 console.print("[dim]Note: lxml is required for python-docx to work properly[/dim]")
                 input("\nPress Enter to continue...")
                 return
+            
+            # Validate document first
+            console.print("[yellow]🔍 Validating document...[/yellow]")
+            is_valid, message, has_text, has_tables = validate_word_document(path)
+            
+            if not is_valid:
+                console.print(f"[red]❌ Document validation failed: {message}[/red]")
+                console.print()
                 
+                # Provide specific error diagnosis
+                if "corrupted or encrypted" in message:
+                    console.print("[yellow]🔍 Diagnosis: Document structure issue[/yellow]")
+                    console.print("This usually means:")
+                    console.print("• Document is corrupted or damaged")
+                    console.print("• Document is encrypted or password-protected")
+                    console.print("• Document contains unsupported elements")
+                    console.print("• Document was created with a very old/new version of Word")
+                elif "lxml" in message.lower():
+                    console.print("[yellow]🔍 Diagnosis: Missing XML processing library[/yellow]")
+                    console.print("• lxml is required for python-docx to work properly")
+                else:
+                    console.print("[yellow]🔍 Diagnosis: General document reading error[/yellow]")
+                    console.print("This might be due to:")
+                    console.print("• Corrupted or encrypted document")
+                    console.print("• Unsupported Word format")
+                    console.print("• Missing dependencies")
+                
+                console.print()
+                console.print("[cyan]💡 Solutions to try:[/cyan]")
+                console.print("1. [yellow]Install/update lxml:[/yellow] pip install --upgrade lxml")
+                console.print("2. [yellow]Try opening in Word and save as .docx again[/yellow]")
+                console.print("3. [yellow]Convert to PDF and upload the PDF instead[/yellow]")
+                console.print("4. [yellow]Check if document is password-protected[/yellow]")
+                console.print("5. [yellow]Try uploading a different Word document[/yellow]")
+                
+                # Show file info as fallback
+                try:
+                    file_size = os.path.getsize(path)
+                    console.print()
+                    console.print(f"[cyan]File info:[/cyan] {filename}")
+                    console.print(f"[cyan]Size:[/cyan] {file_size:,} bytes")
+                    console.print(f"[cyan]Path:[/cyan] {path}")
+                except:
+                    pass
+                
+                input("\nPress Enter to continue...")
+                return
+            
+            # Document is valid, try to read it
             try:
                 doc = docx.Document(path)
+                console.print(f"[green]✅ Document validated successfully[/green]")
                 console.print(f"[cyan]Document has {len(doc.paragraphs)} paragraphs[/cyan]")
+                
+                if has_tables:
+                    console.print(f"[cyan]Document has {len(doc.tables)} tables[/cyan]")
+                
+                # Check if document has content
+                has_content = False
                 for i, para in enumerate(doc.paragraphs[:20]):
                     if para.text.strip():
                         console.print(para.text)
+                        has_content = True
+                
+                if not has_content and not has_tables:
+                    console.print("[yellow]⚠️ Document appears to be empty or contains only formatting[/yellow]")
+                    console.print("[dim]This is common with documents that contain only images, tables, or complex formatting[/dim]")
+                elif not has_content and has_tables:
+                    console.print("[yellow]⚠️ Document contains tables but no text paragraphs[/yellow]")
+                    console.print("[dim]Tables are not displayed in CLI view[/dim]")
+                
                 if len(doc.paragraphs) > 20:
                     console.print(f"\n[yellow]... and {len(doc.paragraphs) - 20} more paragraphs[/yellow]")
                 input("\nPress Enter to continue...")
+                
             except Exception as e:
-                console.print(f"[red]Error reading Word document: {e}[/red]")
-                console.print()
-                console.print("[yellow]This might be due to:[/yellow]")
-                console.print("• Missing lxml dependency")
-                console.print("• Corrupted or encrypted document")
-                console.print("• Unsupported Word format")
-                console.print()
-                console.print("[cyan]Try: pip install lxml[/cyan]")
+                console.print(f"[red]Unexpected error reading document: {e}[/red]")
                 input("Press Enter to continue...")
 
         # CSV files

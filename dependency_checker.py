@@ -65,6 +65,28 @@ def install_missing_dependencies():
     
     return True
 
+def update_dependencies():
+    """Update all dependencies to latest versions"""
+    dependencies = [
+        ("rich", "rich", "Beautiful CLI interface"),
+        ("PyPDF2", "PyPDF2", "PDF file reading"),
+        ("python-docx", "docx", "Word document reading"),
+        ("getch", "getch", "Cross-platform key input"),
+        ("lxml", "lxml", "XML processing for Word docs")
+    ]
+    
+    console.print("[yellow]🔄 Updating all dependencies to latest versions...[/yellow]")
+    
+    for package, import_name, description in dependencies:
+        console.print(f"[yellow]Updating {package}...[/yellow]")
+        success, message = install_dependency(f"{package} --upgrade")
+        if success:
+            console.print(f"[green]{package}: Updated successfully[/green]")
+        else:
+            console.print(f"[yellow]{package}: {message}[/yellow]")
+    
+    return True
+
 def check_all_dependencies():
     """Check all required dependencies"""
     dependencies = [

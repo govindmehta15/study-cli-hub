@@ -22,7 +22,9 @@ Welcome to **CLI Study Hub v4.0**, a fully-featured, open-source **command-line 
 ✅ **Smart file upload** — with duplicate handling for any file type  
 ✅ **File editing** — with reason tracking and backup system  
 ✅ **Hex dump viewer** — for binary files and unknown formats  
-✅ **Error handling** — graceful handling of corrupted or unsupported files  
+✅ **Advanced error handling** — detailed diagnosis and solutions for file issues  
+✅ **Document validation** — pre-checks Word documents before opening  
+✅ **Repair utilities** — tools to diagnose and fix document problems  
 
 ### 🏗️ **Organization & Structure**
 ✅ **User-specific folders** — personal notes separate from global subjects  
@@ -125,6 +127,12 @@ python3 study.py
 - **Application Restart**: Automatically restarts after installing dependencies
 - **Error Recovery**: Graceful handling of all errors and edge cases
 - **Cross-Platform**: Works on Windows, macOS, and Linux
+
+### 🛠️ **Troubleshooting & Repair**
+- **Document Repair Utility**: `python3 repair_document.py` to diagnose Word document issues
+- **Enhanced Error Messages**: Detailed diagnosis and solutions for file problems
+- **Dependency Updates**: Automatic updates for all required packages
+- **File Validation**: Pre-checks documents before attempting to open them
 
 ### 🏠 Main Menu
 
