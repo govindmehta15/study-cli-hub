@@ -1,0 +1,333 @@
+Qatar University
+Computer Science and Engineering Department
+CMPE 482 - Multimedia Networks
+Fall 2025
+Homework Report - Video Coding Analysis
+
+Group Members:
+[Student Name 1] - QUID: [QUID1]
+[Student Name 2] - QUID: [QUID2]
+[Student Name 3] - QUID: [QUID3]
+
+Due Date: November 6, 2025
+
+================================================================================
+
+EXECUTIVE SUMMARY
+
+This report presents a comprehensive analysis of video coding parameters and their effects on video quality, compression efficiency, and bitrate. Using FFmpeg, we conducted experiments on two test videos (a.y4m and b.y4m) to study the impact of quantization parameters (QP), Group of Pictures (GOP) length, B-frames, and different codecs (H.264 vs H.265). Our analysis includes both objective quality metrics (PSNR and SSIM) and subjective visual assessment to understand the trade-offs between compression efficiency and video quality.
+
+================================================================================
+
+1. EFFECT OF QUANTIZATION PARAMETER
+
+1.1 Introduction
+
+The quantization parameter (QP) is a fundamental control in video coding that directly affects the balance between compression efficiency and visual quality. QP values range from 0 (lossless) to 51 (lowest quality), where lower values produce higher quality but larger file sizes. We tested QP values of 10, 20, 30, 40, and 50 on both test videos to analyze their impact on PSNR, SSIM, and bitrate.
+
+1.2 Methodology
+
+For each QP value, we encoded both videos using the following FFmpeg command:
+```
+ffmpeg -i {input_filename.y4m} -c:v libx264 -pix_fmt yuv420p -an -qp {QP} {output_filename.mp4}
+```
+
+Quality metrics were measured using:
+```
+ffmpeg -i {output_filename.mp4} -i {reference_filename.y4m} -an -filter_complex psnr -f null -
+ffmpeg -i {output_filename.mp4} -i {reference_filename.y4m} -an -filter_complex ssim -f null -
+```
+
+1.3 Results and Analysis
+
+[PLACE FIGURE 1.1: PSNR vs QP - Two curves for a.y4m and b.y4m]
+
+[PLACE FIGURE 1.2: SSIM vs QP - Two curves for a.y4m and b.y4m]
+
+[PLACE FIGURE 1.3: Bitrate vs QP - Two curves for a.y4m and b.y4m]
+
+1.4 Discussion
+
+The results demonstrate clear relationships between QP values and video quality metrics:
+
+**PSNR Analysis:**
+- Both videos show exponential decay in PSNR as QP increases
+- Video a.y4m maintains higher PSNR values across all QP settings (50.28 dB at QP=10 vs 50.76 dB for b.y4m)
+- Video b.y4m shows more dramatic quality degradation, dropping to 26.56 dB at QP=50 compared to 30.51 dB for a.y4m
+- This suggests video b.y4m is more sensitive to quantization changes, likely due to higher spatial complexity
+
+**SSIM Analysis:**
+- SSIM values follow similar trends to PSNR but provide better perceptual correlation
+- Video a.y4m maintains SSIM > 0.97 for QP ≤ 30, indicating excellent perceptual quality
+- Video b.y4m shows more rapid SSIM degradation, dropping to 0.693 at QP=50
+- The steeper SSIM decline for b.y4m confirms its higher sensitivity to compression artifacts
+
+**Bitrate Analysis:**
+- Both videos show exponential bitrate reduction as QP increases
+- Video b.y4m requires significantly higher bitrates (200,936 kbps at QP=10 vs 73,415 kbps for a.y4m)
+- The bitrate difference between videos increases with lower QP values, indicating b.y4m's higher complexity
+- At QP=50, both videos converge to similar low bitrates (120-255 kbps)
+
+**Video Sensitivity Analysis:**
+Video b.y4m is more sensitive to QP changes due to:
+1. Higher spatial complexity requiring more bits for accurate representation
+2. Greater detail content that suffers more from quantization artifacts
+3. More challenging content for compression algorithms
+
+**Visual Quality Assessment:**
+- QP=10: Both videos show excellent quality with no visible artifacts
+- QP=20: Slight quality degradation becomes noticeable in b.y4m
+- QP=30: Clear quality differences visible, especially in b.y4m
+- QP=40: Significant blocking artifacts appear in both videos
+- QP=50: Severe quality degradation with prominent blocking effects
+
+**Noise.mp4 Analysis:**
+The noise video analysis reveals important differences between PSNR and SSIM:
+- PSNR values for noise.mp4 are relatively high (similar to QP=30-40 range) due to its random nature
+- SSIM values are significantly lower, better reflecting the perceptual difference from structured content
+- This demonstrates SSIM's superior ability to distinguish between random noise and structured visual content
+- SSIM's advantage lies in its structural similarity approach, making it more perceptually relevant than PSNR
+
+================================================================================
+
+2. EFFECT OF GOP LENGTH
+
+2.1 Introduction
+
+The Group of Pictures (GOP) length determines the frequency of keyframes (I-frames) in the video sequence. Longer GOPs improve compression efficiency but may affect random access and error resilience. We tested GOP lengths of 1, 5, 10, 15, 30, 60, 100, 300, and 600 frames with QP=20.
+
+2.2 Methodology
+
+We used the following FFmpeg command with varying GOP lengths:
+```
+ffmpeg -i {input_filename.y4m} -c:v libx264 -pix_fmt yuv420p -an -g {GOP} -keyint_min 1 -qp 20 {output_filename.mp4}
+```
+
+2.3 Results and Analysis
+
+[PLACE FIGURE 2.1: PSNR vs GOP Length (log scale) - Two curves for a.y4m and b.y4m]
+
+[PLACE FIGURE 2.2: SSIM vs GOP Length (log scale) - Two curves for a.y4m and b.y4m]
+
+[PLACE FIGURE 2.3: Bitrate vs GOP Length (log scale) - Two curves for a.y4m and b.y4m]
+
+2.4 Discussion
+
+**PSNR Analysis:**
+- Both videos show minimal PSNR variation across different GOP lengths
+- Video a.y4m maintains PSNR between 44.76-47.54 dB
+- Video b.y4m shows slightly more variation (41.11-46.01 dB)
+- The small PSNR changes indicate GOP length has limited impact on objective quality metrics
+
+**SSIM Analysis:**
+- SSIM values remain relatively stable across GOP lengths
+- Video a.y4m maintains SSIM > 0.978 for all GOP lengths
+- Video b.y4m shows SSIM range of 0.965-0.988
+- The stability suggests GOP length primarily affects compression efficiency rather than perceptual quality
+
+**Bitrate Analysis:**
+- Both videos show significant bitrate reduction with longer GOP lengths
+- Video a.y4m: 55,280 kbps (GOP=1) to 6,239 kbps (GOP=600) - 88.7% reduction
+- Video b.y4m: 163,372 kbps (GOP=1) to 57,096 kbps (GOP=600) - 65.1% reduction
+- The logarithmic relationship shows diminishing returns for very long GOPs
+- Video b.y4m benefits less from longer GOPs due to its higher complexity
+
+**Key Findings:**
+1. GOP length primarily affects compression efficiency, not quality
+2. Longer GOPs provide substantial bitrate savings with minimal quality loss
+3. The optimal GOP length depends on application requirements (random access vs. compression)
+4. Video complexity affects the benefit gained from longer GOP lengths
+
+================================================================================
+
+3. EFFECT OF MAXIMUM NUMBER OF B-FRAMES
+
+3.1 Introduction
+
+B-frames (bidirectional frames) use both past and future reference frames for prediction, offering superior compression efficiency. However, they introduce encoding/decoding delays, making them unsuitable for real-time applications. We tested maximum B-frame counts of 0, 2, 4, and 8 with QP=20 and GOP=250.
+
+3.2 Methodology
+
+We used the following FFmpeg command with varying B-frame settings:
+```
+ffmpeg -i {input_filename.y4m} -c:v libx264 -pix_fmt yuv420p -an -g 250 -bf {B_frames} -qp 20 {output_filename.mp4}
+```
+
+3.3 Results and Analysis
+
+[PLACE FIGURE 3.1: PSNR vs B-frames - Two curves for a.y4m and b.y4m]
+
+[PLACE FIGURE 3.2: SSIM vs B-frames - Two curves for a.y4m and b.y4m]
+
+[PLACE FIGURE 3.3: Bitrate vs B-frames - Two curves for a.y4m and b.y4m]
+
+3.4 Discussion
+
+**PSNR Analysis:**
+- Both videos show slight PSNR degradation with more B-frames
+- Video a.y4m: 45.13 dB (0 B-frames) to 44.71 dB (8 B-frames) - 0.42 dB decrease
+- Video b.y4m: 42.28 dB (0 B-frames) to 40.77 dB (8 B-frames) - 1.51 dB decrease
+- The quality loss is minimal but consistent across both videos
+
+**SSIM Analysis:**
+- SSIM follows similar trends to PSNR with small decreases
+- Video a.y4m: 0.980 (0 B-frames) to 0.978 (8 B-frames)
+- Video b.y4m: 0.973 (0 B-frames) to 0.963 (8 B-frames)
+- The perceptual quality impact is negligible for most applications
+
+**Bitrate Analysis:**
+- Both videos show significant bitrate reduction with more B-frames
+- Video a.y4m: 9,286 kbps (0 B-frames) to 5,881 kbps (8 B-frames) - 36.7% reduction
+- Video b.y4m: 75,553 kbps (0 B-frames) to 52,941 kbps (8 B-frames) - 29.9% reduction
+- The bitrate savings are substantial and increase with B-frame count
+
+**Cost of Not Using B-frames:**
+1. **Bitrate Increase**: 30-37% higher bitrates without B-frames
+2. **Storage Requirements**: Significantly larger file sizes
+3. **Bandwidth Usage**: Higher network requirements for streaming
+4. **Quality Trade-off**: Minimal quality improvement (0.4-1.5 dB PSNR gain)
+
+**Application Considerations:**
+- **Real-time Applications**: B-frames unsuitable due to encoding/decoding delays
+- **Storage Applications**: B-frames provide excellent compression benefits
+- **Streaming**: B-frames reduce bandwidth requirements but increase latency
+- **Video Conferencing**: Typically disables B-frames for low latency
+
+================================================================================
+
+4. EFFECT OF CODEC (H.264 vs H.265)
+
+4.1 Introduction
+
+H.265 (HEVC) represents a significant advancement over H.264, offering approximately 50% better compression efficiency while maintaining similar quality. We compared both codecs using QP values of 30, 40, and 50 for H.265, and analyzed their performance through rate-distortion curves.
+
+4.2 Methodology
+
+H.264 encoding:
+```
+ffmpeg -i {input_filename.y4m} -c:v libx264 -pix_fmt yuv420p -an -qp {QP} {output_filename.mp4}
+```
+
+H.265 encoding:
+```
+ffmpeg -i {input_filename.y4m} -c:v libx265 -pix_fmt yuv420p -an -x265-params qp={QP} {output_filename.mp4}
+```
+
+4.3 Results and Analysis
+
+[PLACE FIGURE 4.1: PSNR vs QP - Four curves (H.264 and H.265 for both videos)]
+
+[PLACE FIGURE 4.2: SSIM vs QP - Four curves (H.264 and H.265 for both videos)]
+
+[PLACE FIGURE 4.3: Bitrate vs QP - Four curves (H.264 and H.265 for both videos)]
+
+[PLACE FIGURE 4.4: Rate-Distortion curve for video a.y4m (H.264 vs H.265)]
+
+[PLACE FIGURE 4.5: Rate-Distortion curve for video b.y4m (H.264 vs H.265)]
+
+4.4 Discussion
+
+**PSNR Comparison:**
+- H.265 shows slightly higher PSNR values at equivalent QP settings
+- Video a.y4m: H.265 achieves 41.52 dB vs H.264's 41.31 dB at QP=30
+- Video b.y4m: H.265 achieves 35.81 dB vs H.264's 35.41 dB at QP=30
+- The quality improvement is consistent but modest
+
+**SSIM Comparison:**
+- H.265 maintains similar or slightly better SSIM values
+- Video a.y4m: H.265 shows 0.969 vs H.264's 0.968 at QP=30
+- Video b.y4m: H.265 shows 0.914 vs H.264's 0.908 at QP=30
+- Perceptual quality improvements are minimal but consistent
+
+**Bitrate Comparison:**
+- H.265 demonstrates significant bitrate reduction at equivalent QP values
+- Video a.y4m: H.265 uses 686 kbps vs H.264's 990 kbps at QP=30 (30.7% reduction)
+- Video b.y4m: H.265 uses 1,851 kbps vs H.264's 2,175 kbps at QP=30 (14.9% reduction)
+- The compression efficiency advantage is substantial
+
+**Rate-Distortion Analysis:**
+- H.265 curves consistently lie to the left of H.264 curves
+- This indicates better compression efficiency (lower bitrates for same quality)
+- Video a.y4m shows more pronounced H.265 advantage
+- Video b.y4m shows smaller but consistent H.265 benefits
+
+**Maximum Bitrate Reduction:**
+- Video a.y4m: Up to 30.7% bitrate reduction with H.265
+- Video b.y4m: Up to 14.9% bitrate reduction with H.265
+- Average bitrate reduction: 22.8% across both videos
+- The reduction varies based on video complexity and QP settings
+
+**Codec Selection Guidelines:**
+1. **H.264 Advantages**: Wider compatibility, lower computational requirements
+2. **H.265 Advantages**: Better compression, future-proofing, bandwidth savings
+3. **Application Considerations**: 
+   - Streaming: H.265 preferred for bandwidth-limited scenarios
+   - Storage: H.265 provides significant space savings
+   - Real-time: H.264 may be preferred for lower latency
+   - Compatibility: H.264 still has broader device support
+
+================================================================================
+
+5. CONCLUSIONS AND RECOMMENDATIONS
+
+5.1 Key Findings
+
+1. **Quantization Parameter**: Lower QP values provide higher quality but exponentially higher bitrates. Video complexity significantly affects sensitivity to QP changes.
+
+2. **GOP Length**: Longer GOPs provide substantial bitrate savings (up to 88.7%) with minimal quality impact, making them ideal for storage applications.
+
+3. **B-frames**: Provide significant compression benefits (30-37% bitrate reduction) with minimal quality loss, but unsuitable for real-time applications.
+
+4. **Codec Comparison**: H.265 offers 15-31% better compression efficiency than H.264 while maintaining similar quality levels.
+
+5. **Quality Metrics**: SSIM provides better perceptual correlation than PSNR, especially for distinguishing structured content from noise.
+
+5.2 Recommendations
+
+**For Different Applications:**
+
+1. **Video Streaming**: Use H.265 with moderate QP (20-30), longer GOPs (60-300), and B-frames enabled
+2. **Video Conferencing**: Use H.264 with QP 20-25, short GOPs (5-15), and B-frames disabled
+3. **Video Storage**: Use H.265 with QP 25-35, long GOPs (300-600), and maximum B-frames
+4. **Real-time Applications**: Prioritize H.264 with low latency settings
+
+**Parameter Optimization:**
+- QP 20-25: Optimal balance for most applications
+- GOP 60-300: Good compromise between compression and random access
+- B-frames 2-4: Maximum benefit with minimal delay impact
+- H.265: Preferred for new applications with sufficient computational resources
+
+5.3 Future Work
+
+1. Analysis of additional codecs (AV1, VP9)
+2. Subjective quality assessment with human viewers
+3. Analysis of different video content types
+4. Real-time performance benchmarking
+5. Mobile device optimization studies
+
+================================================================================
+
+REFERENCES
+
+1. ITU-T Recommendation H.264, "Advanced video coding for generic audiovisual services"
+2. ITU-T Recommendation H.265, "High efficiency video coding"
+3. Wang, Z., et al. "Image quality assessment: from error visibility to structural similarity." IEEE Transactions on Image Processing 13.4 (2004): 600-612.
+4. FFmpeg Documentation: https://ffmpeg.org/documentation.html
+5. Video Quality Metrics: PSNR and SSIM Analysis
+
+================================================================================
+
+APPENDICES
+
+Appendix A: Raw Data Tables
+[Include detailed numerical results from all experiments]
+
+Appendix B: FFmpeg Commands Used
+[Include all command-line examples used in the analysis]
+
+Appendix C: Additional Analysis
+[Include any supplementary analysis or calculations]
+
+================================================================================
+
+END OF REPORT

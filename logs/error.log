@@ -1,0 +1,60 @@
+[2025-10-18 12:29:19.195187] Package not found at 'subjects/LLM/CMPE482_Homework_Report.docx'
+Traceback (most recent call last):
+  File "/Users/govindmehta/study-cli-hub/file_viewer.py", line 257, in view_file_rich
+    doc = docx.Document(path)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/api.py", line 27, in Document
+    document_part = cast("DocumentPart", Package.open(docx).main_document_part)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/package.py", line 126, in open
+    pkg_reader = PackageReader.from_file(pkg_file)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/pkgreader.py", line 22, in from_file
+    phys_reader = PhysPkgReader(pkg_file)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/phys_pkg.py", line 21, in __new__
+    raise PackageNotFoundError("Package not found at '%s'" % pkg_file)
+docx.opc.exceptions.PackageNotFoundError: Package not found at 'subjects/LLM/CMPE482_Homework_Report.docx'
+
+
+[2025-10-18 12:29:32.602426] Package not found at 'subjects/LLM/CMPE482_Homework_Report.docx'
+Traceback (most recent call last):
+  File "/Users/govindmehta/study-cli-hub/file_viewer.py", line 257, in view_file_rich
+    doc = docx.Document(path)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/api.py", line 27, in Document
+    document_part = cast("DocumentPart", Package.open(docx).main_document_part)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/package.py", line 126, in open
+    pkg_reader = PackageReader.from_file(pkg_file)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/pkgreader.py", line 22, in from_file
+    phys_reader = PhysPkgReader(pkg_file)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/phys_pkg.py", line 21, in __new__
+    raise PackageNotFoundError("Package not found at '%s'" % pkg_file)
+docx.opc.exceptions.PackageNotFoundError: Package not found at 'subjects/LLM/CMPE482_Homework_Report.docx'
+
+
+[2025-10-18 12:29:58.463628] Package not found at 'subjects/LLM/CMPE482_Homework_Report.docx'
+Traceback (most recent call last):
+  File "/Users/govindmehta/study-cli-hub/file_viewer.py", line 257, in view_file_rich
+    doc = docx.Document(path)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/api.py", line 27, in Document
+    document_part = cast("DocumentPart", Package.open(docx).main_document_part)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/package.py", line 126, in open
+    pkg_reader = PackageReader.from_file(pkg_file)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/pkgreader.py", line 22, in from_file
+    phys_reader = PhysPkgReader(pkg_file)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/phys_pkg.py", line 21, in __new__
+    raise PackageNotFoundError("Package not found at '%s'" % pkg_file)
+docx.opc.exceptions.PackageNotFoundError: Package not found at 'subjects/LLM/CMPE482_Homework_Report.docx'
+
+
+[2025-10-18 12:30:08.351386] Package not found at 'subjects/LLM/CMPE482_Homework_Report.docx'
+Traceback (most recent call last):
+  File "/Users/govindmehta/study-cli-hub/file_viewer.py", line 257, in view_file_rich
+    doc = docx.Document(path)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/api.py", line 27, in Document
+    document_part = cast("DocumentPart", Package.open(docx).main_document_part)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/package.py", line 126, in open
+    pkg_reader = PackageReader.from_file(pkg_file)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/pkgreader.py", line 22, in from_file
+    phys_reader = PhysPkgReader(pkg_file)
+  File "/Users/govindmehta/Library/Python/3.9/lib/python/site-packages/docx/opc/phys_pkg.py", line 21, in __new__
+    raise PackageNotFoundError("Package not found at '%s'" % pkg_file)
+docx.opc.exceptions.PackageNotFoundError: Package not found at 'subjects/LLM/CMPE482_Homework_Report.docx'
+
+

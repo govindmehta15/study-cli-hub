@@ -1,3 +1,5 @@
 rich>=13.0.0
 PyPDF2>=3.0.0
 python-docx>=0.8.11
+getch>=1.0.0
+lxml>=4.6.0
