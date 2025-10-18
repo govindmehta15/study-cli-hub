@@ -13,7 +13,14 @@ Welcome to **CLI Study Hub v4.0**, a fully-featured, open-source **command-line 
 ✅ **Page navigation** — PgUp/PgDn jump multiple lines  
 ✅ **Spacebar highlighting** — mark important lines  
 ✅ **Search functionality** — find text within files  
-✅ **Help system** — built-in help with 'h' key  
+✅ **Help system** — built-in help with 'h' key
+
+### 📄 **Interactive Document Viewers**
+✅ **PDF Viewer** — Page-by-page navigation with search  
+✅ **DOCX Viewer** — Paragraph/table navigation with toggle  
+✅ **CSV Viewer** — Row-by-row navigation with search  
+✅ **Search & Highlight** — Find and highlight terms across documents  
+✅ **Navigation Controls** — Arrow keys, Home/End, n/p for search results  
 
 ### 📁 **Universal File Management**
 ✅ **ALL file types supported** — Text, documents, images, archives, executables, media  
@@ -120,6 +127,15 @@ python3 study.py
 - `/` — Search for text in file
 - `h` — Show help
 - `q` — Quit reader
+
+### 📄 **Interactive Document Controls**
+- `←/→` — Previous/Next page (PDF) or paragraph (DOCX)
+- `↑/↓` — Previous/Next page (CSV)
+- `Home/End` — First/Last page or content
+- `/` — Search across entire document
+- `n/p` — Next/Previous search result
+- `t` — Toggle between paragraphs and tables (DOCX)
+- `q` — Quit document viewer
 
 ### 🔄 **Automatic GitHub Integration**
 - **Auto-Pull**: Automatically pulls latest changes on startup
