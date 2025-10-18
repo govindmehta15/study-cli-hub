@@ -24,22 +24,33 @@ def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 def get_key():
-    """Cross-platform key input"""
+    """Cross-platform key input with improved navigation"""
     try:
         import msvcrt
         if msvcrt.kbhit():
             key = msvcrt.getch()
             if key == b'\xe0':  # Special key
                 key = msvcrt.getch()
-                if key == b'H': return 'up'
-                elif key == b'P': return 'down'
-                elif key == b'I': return 'page_up'
-                elif key == b'Q': return 'page_down'
-            elif key == b' ': return 'space'
-            elif key == b'q': return 'quit'
-            elif key == b'/': return 'search'
-            elif key == b'h': return 'help'
-            elif key == b'\r': return 'enter'
+                if key == b'H': return '\x1b[A'  # Up arrow
+                elif key == b'P': return '\x1b[B'  # Down arrow
+                elif key == b'K': return '\x1b[D'  # Left arrow
+                elif key == b'M': return '\x1b[C'  # Right arrow
+                elif key == b'G': return '\x1b[H'  # Home
+                elif key == b'O': return '\x1b[F'  # End
+                elif key == b'I': return '\x1b[5~'  # Page Up
+                elif key == b'Q': return '\x1b[6~'  # Page Down
+            elif key == b' ': return ' '
+            elif key == b'q': return 'q'
+            elif key == b'/': return '/'
+            elif key == b'h': return 'h'
+            elif key == b'n': return 'n'
+            elif key == b'p': return 'p'
+            elif key == b't': return 't'
+            elif key == b'g': return 'g'
+            elif key == b'j': return 'j'
+            elif key == b'k': return 'k'
+            elif key == b'l': return 'l'
+            elif key == b'\r': return '\r'
     except ImportError:
         # Unix/Linux/Mac
         import termios, tty
@@ -49,16 +60,27 @@ def get_key():
             tty.setraw(sys.stdin.fileno())
             ch = sys.stdin.read(1)
             if ch == '\x1b':  # ESC sequence
-                ch = sys.stdin.read(2)
-                if ch == '[A': return 'up'
-                elif ch == '[B': return 'down'
-                elif ch == '[5~': return 'page_up'
-                elif ch == '[6~': return 'page_down'
-            elif ch == ' ': return 'space'
-            elif ch == 'q': return 'quit'
-            elif ch == '/': return 'search'
-            elif ch == 'h': return 'help'
-            elif ch == '\r': return 'enter'
+                ch += sys.stdin.read(2)
+                if ch == '[A': return '\x1b[A'  # Up arrow
+                elif ch == '[B': return '\x1b[B'  # Down arrow
+                elif ch == '[D': return '\x1b[D'  # Left arrow
+                elif ch == '[C': return '\x1b[C'  # Right arrow
+                elif ch == '[H': return '\x1b[H'  # Home
+                elif ch == '[F': return '\x1b[F'  # End
+                elif ch == '[5~': return '\x1b[5~'  # Page Up
+                elif ch == '[6~': return '\x1b[6~'  # Page Down
+            elif ch == ' ': return ' '
+            elif ch == 'q': return 'q'
+            elif ch == '/': return '/'
+            elif ch == 'h': return 'h'
+            elif ch == 'n': return 'n'
+            elif ch == 'p': return 'p'
+            elif ch == 't': return 't'
+            elif ch == 'g': return 'g'
+            elif ch == 'j': return 'j'
+            elif ch == 'k': return 'k'
+            elif ch == 'l': return 'l'
+            elif ch == '\r': return '\r'
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     return None
@@ -113,21 +135,21 @@ def interactive_text_reader(path, filename):
             if not key:
                 continue
                 
-            if key == 'up':
+            if key == '\x1b[A' or key == 'k':  # Up arrow or k
                 current_line = max(0, current_line - 1)
-            elif key == 'down':
+            elif key == '\x1b[B' or key == 'j':  # Down arrow or j
                 current_line = min(len(lines) - 1, current_line + 1)
-            elif key == 'page_up':
+            elif key == '\x1b[5~' or key == 'u':  # Page Up or u
                 current_line = max(0, current_line - lines_per_page)
-            elif key == 'page_down':
+            elif key == '\x1b[6~' or key == 'd':  # Page Down or d
                 current_line = min(len(lines) - 1, current_line + lines_per_page)
-            elif key == 'space':
+            elif key == ' ' or key == 'h':  # Space or h for highlight
                 # Toggle highlight for current line
                 if current_line in highlighted:
                     highlighted.remove(current_line)
                 else:
                     highlighted.add(current_line)
-            elif key == 'search':
+            elif key == '/':  # Search
                 search_term = Prompt.ask("[yellow]Enter search term[/yellow]").strip()
                 if search_term:
                     search_results = []
@@ -140,10 +162,20 @@ def interactive_text_reader(path, filename):
                     else:
                         console.print("[red]No results found[/red]")
                         input("Press Enter to continue...")
-            elif key == 'help':
+            elif key == '?':  # Help
                 show_reader_help()
-            elif key == 'quit':
+            elif key == 'q':  # Quit
                 break
+            elif key == 'n' and search_results:  # Next search result
+                search_index = (search_index + 1) % len(search_results)
+                current_line = search_results[search_index]
+            elif key == 'p' and search_results:  # Previous search result
+                search_index = (search_index - 1) % len(search_results)
+                current_line = search_results[search_index]
+            elif key == 'g':  # Go to beginning
+                current_line = 0
+            elif key == 'G':  # Go to end
+                current_line = len(lines) - 1
                 
     except Exception as e:
         handle_error(e)
@@ -154,14 +186,16 @@ def show_reader_help():
     console.print(Panel("[bold cyan]Interactive Reader Help[/bold cyan]", expand=False))
     console.print()
     console.print("[green]Navigation:[/green]")
-    console.print("  ↑ / ↓     - Scroll line by line")
-    console.print("  PgUp/PgDn - Jump multiple lines")
+    console.print("  ↑/↓ or k/j    - Scroll line by line")
+    console.print("  PgUp/PgDn or u/d - Jump multiple lines")
+    console.print("  g/G           - Go to beginning/end")
     console.print()
     console.print("[yellow]Features:[/yellow]")
-    console.print("  SPACE     - Highlight/unhighlight current line")
-    console.print("  /         - Search for text in file")
-    console.print("  h         - Show this help")
-    console.print("  q         - Quit reader")
+    console.print("  SPACE or h    - Highlight/unhighlight current line")
+    console.print("  /             - Search for text in file")
+    console.print("  n/p           - Next/Previous search result")
+    console.print("  ?             - Show this help")
+    console.print("  q             - Quit reader")
     console.print()
     input("Press Enter to continue...")
 
