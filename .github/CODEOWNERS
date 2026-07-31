@@ -5,8 +5,8 @@
 # code owner and are auto-approved + auto-merged by
 # .github/workflows/auto-merge-data-prs.yml instead.
 
-/study_cli_hub/      @govindmehta15
-/pyproject.toml      @govindmehta15
-/.github/            @govindmehta15
-/README.md           @govindmehta15
-/.gitignore          @govindmehta15
+/study_cli_hub/      @govindmehta15 @govind-m15
+/pyproject.toml      @govindmehta15 @govind-m15
+/.github/            @govindmehta15 @govind-m15
+/README.md           @govindmehta15 @govind-m15
+/.gitignore          @govindmehta15 @govind-m15
