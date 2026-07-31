@@ -5,7 +5,8 @@ from rich.table import Table
 from rich.prompt import Prompt
 from rich.panel import Panel
 from rich.text import Text
-from error_handler import handle_error
+from study_cli_hub.error_handler import handle_error
+from study_cli_hub.paths import subject_path
 
 console = Console()
 ALLOWED_FORMATS = [
@@ -173,7 +174,7 @@ def upload_file(user_folder, subject):
             return
         
         # Upload file
-        dest_folder = os.path.join("subjects", user_folder, subject) if user_folder else os.path.join("subjects", subject)
+        dest_folder = subject_path(user_folder, subject)
         os.makedirs(dest_folder, exist_ok=True)
         dest_path = os.path.join(dest_folder, os.path.basename(path))
         

@@ -90,14 +90,15 @@ def suggest_repairs(issues):
     
     return list(set(suggestions))  # Remove duplicates
 
-def repair_document():
+def repair_document(file_path=None):
     """Main repair function"""
     console.print(Panel("[bold cyan]🔧 Document Repair Utility[/bold cyan]", expand=False))
     console.print()
-    
+
     # Get file path
-    file_path = Prompt.ask("[yellow]Enter path to Word document to repair[/yellow]").strip()
-    
+    if not file_path:
+        file_path = Prompt.ask("[yellow]Enter path to Word document to repair[/yellow]").strip()
+
     if not os.path.exists(file_path):
         console.print(f"[red]File not found: {file_path}[/red]")
         return False

@@ -1,11 +1,12 @@
 # file_viewer.py
-import os, csv, sys, getch
+import os, csv, sys
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from rich.prompt import Prompt
 from datetime import datetime
-from error_handler import handle_error
+from study_cli_hub.error_handler import handle_error
+from study_cli_hub.paths import note_path
 
 console = Console()
 
@@ -201,12 +202,12 @@ def show_reader_help():
 
 def edit_file_with_reason(user_folder, subject, filename):
     """Edit a file with reason tracking"""
-    path = os.path.join("subjects", user_folder, subject, filename) if user_folder else os.path.join("subjects", subject, filename)
-    
+    path = note_path(user_folder, subject, filename)
+
     if not os.path.exists(path):
         console.print(f"[red]File '{filename}' not found[/red]")
         return
-    
+
     try:
         # Get edit reason
         reason = Prompt.ask("[yellow]Enter reason for editing this file[/yellow]").strip()
@@ -244,7 +245,7 @@ def edit_file_with_reason(user_folder, subject, filename):
             f.write(new_content)
         
         # Log the edit
-        log_path = os.path.join("subjects", user_folder, subject, "edit_log.txt") if user_folder else os.path.join("subjects", subject, "edit_log.txt")
+        log_path = note_path(user_folder, subject, "edit_log.txt")
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"[{datetime.now()}] Edited {filename} - Reason: {reason}\n")
             f.write(f"Backup saved as: {os.path.basename(backup_path)}\n\n")
@@ -730,7 +731,7 @@ def interactive_csv_viewer(path, filename):
 
 def view_file_rich(user_folder, subject, filename, editable=False):
     """Main file viewer function - handles ALL file types in CLI"""
-    path = os.path.join("subjects", user_folder, subject, filename) if user_folder else os.path.join("subjects", subject, filename)
+    path = note_path(user_folder, subject, filename)
     
     if not os.path.exists(path):
         console.print(f"[red]File '{filename}' not found[/red]")
