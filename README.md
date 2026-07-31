@@ -246,25 +246,21 @@ Use `/whoami` to check who's connected and `/logout` to disconnect.
 
 ---
 
-## 🧑‍💻 Maintainer setup: enabling `/login`
+## 🔑 `/login`'s OAuth App
 
-`/login` needs a GitHub OAuth App with **Device Flow** enabled. This is a
-one-time setup only the repo owner needs to do:
+`/login` works out of the box — no setup needed. It uses a GitHub OAuth App
+(Device Flow enabled) whose Client ID is baked into
+`study_cli_hub/github_auth.py` (`DEFAULT_GITHUB_CLIENT_ID`). This is a public
+identifier, not a secret — no client secret is ever used or needed for
+Device Flow — so it's safe to commit and ship in the published package.
 
-1. Go to **github.com/settings/developers → OAuth Apps → New OAuth App**.
-2. Any homepage URL works (device flow doesn't use a callback URL). Save it.
-3. Open the app's settings and check **"Enable Device Flow"**.
-4. Copy the **Client ID** (no client secret is needed for device flow).
-5. Set it wherever `study-hub` runs:
-   ```bash
-   export STUDY_HUB_GITHUB_CLIENT_ID=Iv1.xxxxxxxxxxxxxxxx
-   ```
-   Since a device-flow Client ID is a public identifier (not a secret), it's
-   also safe to bake into `study_cli_hub/github_auth.py` directly if you'd
-   rather ship it as a default so users don't need the env var at all.
-
-Until this is configured, `/login` prints setup instructions instead of
-failing silently.
+Running your own fork against a different OAuth App? Override it without
+touching the code:
+```bash
+export STUDY_HUB_GITHUB_CLIENT_ID=Iv1.xxxxxxxxxxxxxxxx
+```
+(register your own at **github.com/settings/developers → New OAuth App**,
+with **"Enable Device Flow"** checked).
 
 ---
 
