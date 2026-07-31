@@ -4,7 +4,7 @@ import os
 import signal
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
@@ -15,13 +15,19 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
-from study_cli_hub import github_auth
+from study_cli_hub import animations, community, contribute, github_auth, local_state, search, stats
 from study_cli_hub.completer import SlashCompleter
 from study_cli_hub.doc_repair import repair_document
 from study_cli_hub.error_handler import handle_error
 from study_cli_hub.file_uploader import upload_file
 from study_cli_hub.file_viewer import view_file_rich
-from study_cli_hub.paths import note_path, subject_path
+from study_cli_hub.paths import (
+    list_known_users,
+    list_notes,
+    list_subjects,
+    note_path,
+    subject_path,
+)
 
 console = Console()
 
@@ -30,6 +36,13 @@ MAIN_COMMANDS = [
     ("/create-subject", "", "Create a new subject"),
     ("/list", "", "Refresh the subjects list"),
     ("/switch-user", "", "Switch user folder or global mode"),
+    ("/explore", "", "Explore other users' study content"),
+    ("/search", "<term>", "Full-text search your and others' notes"),
+    ("/stats", "", "Show your subjects/notes/streak dashboard"),
+    ("/leaderboard", "", "Rank all known users by streak/activity"),
+    ("/digest", "", "See what's new since your last visit"),
+    ("/feed", "", "Browse the global knowledge feed"),
+    ("/chat", "<username>", "Open an async chat with another user"),
     ("/login", "", "Connect your GitHub account"),
     ("/logout", "", "Disconnect your GitHub account"),
     ("/whoami", "", "Show the connected GitHub account"),
@@ -46,6 +59,47 @@ SUBJECT_COMMANDS = [
     ("/repair", "<path>", "Diagnose a Word document's issues"),
     ("/help", "", "Show available commands"),
     ("/back", "", "Return to the subjects menu"),
+]
+
+EXPLORE_COMMANDS = [
+    ("/open", "<username|number>", "Browse a user's subjects (read-only)"),
+    ("/help", "", "Show available commands"),
+    ("/back", "", "Return to the main menu"),
+]
+
+EXPLORE_USER_COMMANDS = [
+    ("/study", "<subject|number>", "Open one of their subjects"),
+    ("/help", "", "Show available commands"),
+    ("/back", "", "Return to the users list"),
+]
+
+EXPLORE_SUBJECT_COMMANDS = [
+    ("/read", "<note|number>", "Open a note in the interactive reader"),
+    ("/help", "", "Show available commands"),
+    ("/back", "", "Return to their subjects"),
+]
+
+FEED_COMMANDS = [
+    ("/post", "", "Write a new post to the global feed"),
+    ("/comment", "<number> <text>", "Comment on a feed post"),
+    ("/react", "<number> <emoji>", "React to a post (e.g. /react 2 heart)"),
+    ("/refresh", "", "Reload the feed from GitHub"),
+    ("/help", "", "Show available commands"),
+    ("/back", "", "Return to the main menu"),
+]
+
+SEARCH_COMMANDS = [
+    ("/open", "<number>", "Open a result in the reader"),
+    ("/help", "", "Show available commands"),
+    ("/back", "", "Return to the main menu"),
+]
+
+CHAT_COMMANDS = [
+    ("/say", "<message>", "Send a message"),
+    ("/react", "<number> <emoji>", "React to a message (e.g. /react 1 laugh)"),
+    ("/refresh", "", "Check for new replies"),
+    ("/help", "", "Show available commands"),
+    ("/back", "", "Return to the main menu"),
 ]
 
 # Global flag to track if auto-push has been done
@@ -129,49 +183,117 @@ def auto_git_sync():
             console.print("[yellow]Not in a git repository - GitHub sync skipped[/yellow]")
             return
 
-        console.print(Panel("[bold cyan]Auto GitHub Sync[/bold cyan]", expand=False))
-        console.print("[yellow]Pulling latest changes...[/yellow]")
-        pull_result = github_auth.git_pull()
+        console.print(Panel("[bold cyan]🔄 Auto GitHub Sync[/bold cyan]", expand=False))
+        pull_result = animations.with_spinner(console, "📥 Pulling latest changes...", github_auth.git_pull)
         if pull_result.returncode == 0:
-            console.print("[green]Successfully pulled latest changes[/green]")
+            console.print("[green]✅ Successfully pulled latest changes[/green]")
         else:
-            console.print("[yellow]Pull failed (normal if no remote exists, or run /login)[/yellow]")
+            console.print("[yellow]⚠️ Pull failed (normal if no remote exists, or run /login)[/yellow]")
     except FileNotFoundError:
-        console.print("[yellow]Git not found - GitHub sync features disabled[/yellow]")
+        console.print("[yellow]⚠️ Git not found - GitHub sync features disabled[/yellow]")
     except Exception as e:
-        console.print(f"[yellow]GitHub sync error: {e}[/yellow]")
+        console.print(f"[yellow]⚠️ GitHub sync error: {e}[/yellow]")
 
 
-def auto_git_push():
-    """Commit and push changes to GitHub, using a stored login token if present."""
+def _has_unmerged_paths(cwd=None):
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "--diff-filter=U"], capture_output=True, text=True, cwd=cwd or os.getcwd()
+    )
+    return bool(result.stdout.strip())
+
+
+def _has_unpushed_commits(cwd=None):
+    result = subprocess.run(
+        ["git", "rev-list", "@{u}..HEAD", "--count"], capture_output=True, text=True, cwd=cwd or os.getcwd()
+    )
+    if result.returncode != 0:
+        # No upstream tracking configured (e.g. this is the very first push) -
+        # can't prove there's nothing to push, so assume there is.
+        return True
+    return result.stdout.strip() not in ("", "0")
+
+
+def auto_git_push(max_attempts=3):
+    """Commit and push changes to GitHub, using a stored login token if
+    present. If the push is rejected because someone else pushed first
+    (non-fast-forward), auto pull --rebase and retry - this is what makes
+    concurrent pushes from many users hassle-free. The one case this can't
+    resolve hands-off is two users editing the literal same lines of the
+    same file; that surfaces as a real rebase conflict and needs a human.
+
+    Also retries pushing commits that were already made in a *previous*
+    run but never made it to the remote (e.g. all attempts were exhausted
+    last time) - a plain "any uncommitted changes?" check would silently
+    skip those forever.
+
+    If the logged-in user isn't a collaborator (no direct push access),
+    this falls back to forking the repo under their account and opening a
+    PR instead - that's what makes using the app hassle-free for literally
+    anyone, while code changes still require a maintainer-reviewed PR."""
     try:
         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, cwd=os.getcwd())
         if status.returncode != 0:
             return
-        if not status.stdout.strip():
-            console.print("[green]No changes to push[/green]")
+
+        if status.stdout.strip():
+            subprocess.run(["git", "add", "."], capture_output=True, text=True, cwd=os.getcwd())
+            commit_message = f"Auto-sync: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            subprocess.run(["git", "commit", "-m", commit_message], capture_output=True, text=True, cwd=os.getcwd())
+
+        if not _has_unpushed_commits():
+            console.print("[green]✅ No changes to push[/green]")
             return
 
-        console.print(Panel("[bold cyan]Auto Push to GitHub[/bold cyan]", expand=False))
-        subprocess.run(["git", "add", "."], capture_output=True, text=True, cwd=os.getcwd())
-
-        commit_message = f"Auto-sync: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        commit_result = subprocess.run(["git", "commit", "-m", commit_message], capture_output=True, text=True, cwd=os.getcwd())
-        if commit_result.returncode != 0:
-            console.print("[yellow]Nothing to commit[/yellow]")
+        access = contribute.has_push_access()
+        if access is False:
+            pr_url, err = animations.with_spinner(
+                console, "🍴 No direct push access - syncing via your fork...", contribute.contribute_via_fork
+            )
+            if err:
+                console.print(f"[red]❌ {err}[/red]")
+            else:
+                console.print(
+                    f"[green]✅ Synced! Since this only touches your notes, it'll auto-merge shortly:[/green]\n{pr_url}"
+                )
             return
 
-        console.print("[yellow]Pushing to GitHub...[/yellow]")
-        push_result = github_auth.git_push()
-        if push_result.returncode == 0:
-            console.print("[green]Successfully pushed to GitHub[/green]")
-        else:
-            reason = push_result.stderr.strip() or "check your GitHub login (/login) or remote permissions"
-            console.print(f"[yellow]Push failed: {reason}[/yellow]")
+        console.print(Panel("[bold cyan]🔄 Auto Push to GitHub[/bold cyan]", expand=False))
+
+        for attempt in range(1, max_attempts + 1):
+            push_result = animations.with_spinner(console, "📤 Pushing to GitHub...", github_auth.git_push)
+            if push_result.returncode == 0:
+                console.print("[green]✅ Successfully pushed to GitHub[/green]")
+                return
+
+            stderr = push_result.stderr or ""
+            if not any(marker in stderr for marker in ("rejected", "fetch first", "non-fast-forward")):
+                reason = stderr.strip() or "check your GitHub login (/login) or remote permissions"
+                console.print(f"[red]❌ Push failed: {reason}[/red]")
+                return
+
+            console.print(
+                f"[yellow]⚠️ Push rejected (attempt {attempt}/{max_attempts}) - someone else pushed first. "
+                "Pulling + rebasing and retrying...[/yellow]"
+            )
+            pull_result = animations.with_spinner(console, "📥 Pulling + rebasing...", github_auth.git_pull)
+            if pull_result.returncode != 0 or _has_unmerged_paths():
+                console.print(Panel(
+                    "[bold red]⚠️ Manual merge conflict during rebase[/bold red]\n\n"
+                    "Someone else edited the exact same file/lines you did - this "
+                    "needs a human. Resolve the conflict markers in the affected "
+                    "file(s), then run:\n"
+                    "  git add <file>\n  git rebase --continue\n"
+                    "and /sync again. (Run 'git rebase --abort' to bail out instead.)",
+                    expand=False,
+                ))
+                return
+            # rebase succeeded cleanly - loop retries the push
+
+        console.print(f"[yellow]⚠️ Still couldn't push after {max_attempts} attempts - try /sync again shortly.[/yellow]")
     except FileNotFoundError:
-        console.print("[yellow]Git not found - auto push skipped[/yellow]")
+        console.print("[yellow]⚠️ Git not found - auto push skipped[/yellow]")
     except Exception as e:
-        console.print(f"[yellow]Auto push error: {e}[/yellow]")
+        console.print(f"[yellow]⚠️ Auto push error: {e}[/yellow]")
 
 
 def check_git_status():
@@ -188,23 +310,6 @@ def check_git_status():
             console.print("[yellow]Not in a git repository[/yellow]")
     except FileNotFoundError:
         console.print("[yellow]Git not found - GitHub sync features disabled[/yellow]")
-
-
-def list_subjects(user_folder=None):
-    """Get list of subjects for current user"""
-    path = subject_path(user_folder)
-    os.makedirs(path, exist_ok=True)
-    subjects = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
-    return sorted(subjects)
-
-
-def list_notes(user_folder, subject):
-    """Get list of notes in a subject"""
-    path = subject_path(user_folder, subject)
-    os.makedirs(path, exist_ok=True)
-    files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
-    files = [f for f in files if not f.startswith(".") and f != "edit_log.txt"]
-    return sorted(files)
 
 
 def resolve_choice(items, target, kind="item"):
@@ -226,19 +331,25 @@ def create_subject(user_folder):
     try:
         name = Prompt.ask("[yellow]Enter new subject name[/yellow]").strip()
         if not name:
-            console.print("[red]Subject name cannot be empty![/red]")
+            console.print("[red]⚠️ Subject name cannot be empty![/red]")
             return
 
         path = subject_path(user_folder, name)
         if os.path.exists(path):
-            console.print(f"[red]Subject '{name}' already exists![/red]")
+            console.print(f"[red]⚠️ Subject '{name}' already exists![/red]")
             return
+
+        is_first_subject = user_folder and not list_subjects(user_folder)
 
         os.makedirs(path, exist_ok=True)
         description = Prompt.ask("[yellow]Enter short description[/yellow]").strip()
         with open(os.path.join(path, f"description_{name}.txt"), "w", encoding="utf-8") as f:
             f.write(description)
-        console.print(f"[green]Subject '{name}' created successfully![/green]")
+
+        if is_first_subject:
+            animations.celebrate(console, f"Your first subject, '{name}', is live!")
+        else:
+            console.print(f"[green]✅ Subject '{name}' created successfully![/green]")
     except Exception as e:
         handle_error(e)
 
@@ -248,20 +359,20 @@ def create_new_note(user_folder, subject):
     try:
         filename = Prompt.ask("[yellow]Enter new note filename[/yellow]").strip()
         if not filename:
-            console.print("[red]Filename cannot be empty![/red]")
+            console.print("[red]⚠️ Filename cannot be empty![/red]")
             return
         if "." not in filename:
             filename += ".txt"
 
         path = note_path(user_folder, subject, filename)
         if os.path.exists(path):
-            console.print(f"[red]File '{filename}' already exists![/red]")
+            console.print(f"[red]⚠️ File '{filename}' already exists![/red]")
             return
 
         content = Prompt.ask("[yellow]Enter initial content (optional)[/yellow]").strip()
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
-        console.print(f"[green]Created new note: {filename}[/green]")
+        console.print(f"[green]✅ Created new note: {filename}[/green]")
     except Exception as e:
         handle_error(e)
 
@@ -320,7 +431,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     clear_screen()
-    console.print(Align.center(Panel(Text("Welcome to CLI Study Hub v5.0", style="bold green"), expand=False)))
+    animations.typewriter(console, "👋 Welcome to CLI Study Hub v5.0", style="bold green")
     console.print()
 
     auto_git_sync()
@@ -328,7 +439,7 @@ def main():
 
     user = Prompt.ask("[yellow]Enter your username (press Enter for Global mode)[/yellow]").strip()
     user_folder = user if user else None
-    console.print(f"[green]Using {'user folder: ' + user_folder if user_folder else 'global mode'}[/green]")
+    console.print(f"[green]✅ Using {'user folder: ' + user_folder if user_folder else 'global mode'}[/green]")
     console.print()
     input("Press Enter to continue...")
 
@@ -348,7 +459,7 @@ def main():
 
             if name in ("/exit", "/quit"):
                 clear_screen()
-                console.print(Panel("[bold green]Thanks for using CLI Study Hub![/bold green]", expand=False))
+                animations.typewriter(console, "👋 Thanks for using CLI Study Hub!", style="bold green")
                 global auto_push_done
                 auto_push_done = True
                 auto_git_push()
@@ -357,7 +468,7 @@ def main():
             elif name == "/switch-user":
                 user = Prompt.ask("[yellow]Enter new username (or press Enter for Global)[/yellow]").strip()
                 user_folder = user if user else None
-                console.print(f"[green]Switched to {'user: ' + user_folder if user_folder else 'global mode'}[/green]")
+                console.print(f"[green]✅ Switched to {'user: ' + user_folder if user_folder else 'global mode'}[/green]")
                 input("Press Enter to continue...")
 
             elif name == "/create-subject":
@@ -396,6 +507,46 @@ def main():
                 subject = resolve_choice(subjects, arg, kind="subject")
                 if subject:
                     subject_menu(user_folder, subject)
+
+            elif name == "/explore":
+                explore_menu(user_folder)
+
+            elif name == "/search":
+                if not arg:
+                    console.print("[red]Usage: /search <term>[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                search_menu(user_folder, arg)
+
+            elif name == "/stats":
+                if not user_folder:
+                    console.print("[yellow]Stats/streaks need a personal user folder - /switch-user to one first.[/yellow]")
+                    input("Press Enter to continue...")
+                    continue
+                show_stats(user_folder)
+                input("Press Enter to continue...")
+
+            elif name == "/leaderboard":
+                show_leaderboard()
+                input("Press Enter to continue...")
+
+            elif name == "/digest":
+                if not community.is_logged_in():
+                    console.print("[yellow]Run /login first to see your digest.[/yellow]")
+                    input("Press Enter to continue...")
+                    continue
+                show_digest()
+                input("Press Enter to continue...")
+
+            elif name == "/feed":
+                feed_menu()
+
+            elif name == "/chat":
+                if not arg:
+                    console.print("[red]Usage: /chat <github-username>[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                chat_menu(arg)
 
             else:
                 console.print("[red]Unknown command. Type / to see the available commands.[/red]")
@@ -464,6 +615,527 @@ def subject_menu(user_folder, subject):
                 repair_document(arg)
                 input("Press Enter to continue...")
 
+            else:
+                console.print("[red]Unknown command. Type / to see the available commands.[/red]")
+                input("Press Enter to continue...")
+
+        except Exception as e:
+            handle_error(e)
+            input("Press Enter to continue...")
+
+
+def explore_menu(current_user_folder):
+    """Read-only browsing of other users' subjects/notes."""
+    prompt = SlashPrompt(EXPLORE_COMMANDS)
+
+    while True:
+        try:
+            clear_screen()
+            users = list_known_users(exclude=current_user_folder)
+            console.print(Panel("[bold cyan]Explore Other Users[/bold cyan]", expand=False))
+            if not users:
+                console.print("[yellow]No other users' folders found yet.[/yellow]")
+            else:
+                table = Table(show_header=True, header_style="bold magenta")
+                table.add_column("No.", justify="right", width=4)
+                table.add_column("Username", width=30)
+                table.add_column("Subjects", justify="right", width=10)
+                for i, u in enumerate(users, 1):
+                    table.add_row(str(i), u, str(len(list_subjects(u))))
+                console.print(table)
+            console.print()
+            print_help(EXPLORE_COMMANDS, "Commands (type / for live suggestions)")
+
+            name, arg = parse_command(prompt.ask())
+            if name is None:
+                continue
+
+            if name == "/back":
+                break
+            elif name == "/help":
+                print_help(EXPLORE_COMMANDS, "Explore Commands")
+                input("Press Enter to continue...")
+            elif name == "/open":
+                if not arg:
+                    console.print("[red]Usage: /open <username|number>[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                target_user = resolve_choice(users, arg, kind="user")
+                if target_user:
+                    explore_user_menu(target_user)
+            else:
+                console.print("[red]Unknown command. Type / to see the available commands.[/red]")
+                input("Press Enter to continue...")
+
+        except Exception as e:
+            handle_error(e)
+            input("Press Enter to continue...")
+
+
+def explore_user_menu(target_user):
+    prompt = SlashPrompt(EXPLORE_USER_COMMANDS)
+
+    while True:
+        try:
+            clear_screen()
+            subjects = list_subjects(target_user)
+            display_subjects(subjects, target_user)
+            console.print()
+            print_help(EXPLORE_USER_COMMANDS, "Commands (type / for live suggestions)")
+
+            name, arg = parse_command(prompt.ask())
+            if name is None:
+                continue
+
+            if name == "/back":
+                break
+            elif name == "/help":
+                print_help(EXPLORE_USER_COMMANDS, f"Browsing @{target_user}")
+                input("Press Enter to continue...")
+            elif name == "/study":
+                if not arg:
+                    console.print("[red]Usage: /study <subject|number>[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                subject = resolve_choice(subjects, arg, kind="subject")
+                if subject:
+                    explore_subject_menu(target_user, subject)
+            else:
+                console.print("[red]Unknown command. Type / to see the available commands.[/red]")
+                input("Press Enter to continue...")
+
+        except Exception as e:
+            handle_error(e)
+            input("Press Enter to continue...")
+
+
+def explore_subject_menu(target_user, subject):
+    prompt = SlashPrompt(EXPLORE_SUBJECT_COMMANDS)
+
+    while True:
+        try:
+            clear_screen()
+            notes = list_notes(target_user, subject)
+            display_notes(notes, subject)
+            console.print()
+            print_help(EXPLORE_SUBJECT_COMMANDS, "Commands (type / for live suggestions)")
+
+            name, arg = parse_command(prompt.ask())
+            if name is None:
+                continue
+
+            if name == "/back":
+                break
+            elif name == "/help":
+                print_help(EXPLORE_SUBJECT_COMMANDS, f"{subject} (read-only)")
+                input("Press Enter to continue...")
+            elif name == "/read":
+                if not arg:
+                    console.print("[red]Usage: /read <note|number>[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                filename = resolve_choice(notes, arg, kind="note")
+                if filename:
+                    view_file_rich(target_user, subject, filename)
+            else:
+                console.print("[red]Unknown command. Type / to see the available commands.[/red]")
+                input("Press Enter to continue...")
+
+        except Exception as e:
+            handle_error(e)
+            input("Press Enter to continue...")
+
+
+def render_bar(value, max_value, width=24):
+    filled = int(width * value / max_value) if max_value else 0
+    return "█" * filled + "░" * (width - filled)
+
+
+STREAK_MILESTONES = {7, 30, 100}
+
+
+def show_stats(user_folder):
+    data = stats.user_stats(user_folder)
+    scale = max(data["subjects"], data["notes"], 10)
+    console.print(Panel(f"[bold cyan]📊 Study Stats — {user_folder}[/bold cyan]", expand=False))
+    console.print(f"Subjects  {render_bar(data['subjects'], scale)}  {data['subjects']}")
+    console.print(f"Notes     {render_bar(data['notes'], scale)}  {data['notes']}")
+    streak_line = f"🔥 Streak  {data['streak']} day(s)"
+    if data["last_active"]:
+        streak_line += f" (last active {data['last_active']})"
+    console.print(streak_line)
+    if data["streak"] in STREAK_MILESTONES:
+        animations.celebrate(console, f"{data['streak']}-day streak! Keep it going!")
+
+
+def show_leaderboard():
+    rows = stats.all_user_stats()
+    if not rows:
+        console.print("[yellow]No known users yet - create a subject under a personal user folder first.[/yellow]")
+        return
+    rows.sort(key=lambda s: (s["streak"], s["notes"]), reverse=True)
+    table = Table(title="🏆 Leaderboard", show_header=True, header_style="bold magenta")
+    table.add_column("Rank", justify="right", width=4)
+    table.add_column("User", width=20)
+    table.add_column("🔥 Streak", justify="right", width=10)
+    table.add_column("Notes", justify="right", width=8)
+    table.add_column("Subjects", justify="right", width=8)
+    for i, s in enumerate(rows, 1):
+        table.add_row(str(i), s["user"], str(s["streak"]), str(s["notes"]), str(s["subjects"]))
+    console.print(table)
+
+
+def _parse_ts(ts):
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def show_digest():
+    me = community.current_username()
+    now = datetime.now(timezone.utc)
+    since_feed = local_state.get_last_seen("feed")
+    since_chat = local_state.get_last_seen("chat")
+    since_feed_dt = _parse_ts(since_feed) if since_feed else None
+    since_chat_dt = _parse_ts(since_chat) if since_chat else None
+
+    console.print(Panel("[bold cyan]📰 What's new since your last visit[/bold cyan]", expand=False))
+
+    feed_items, err = community.list_feed()
+    if err:
+        console.print(f"[red]{err}[/red]")
+    else:
+        new_posts = [i for i in feed_items if not since_feed_dt or _parse_ts(i["createdAt"]) > since_feed_dt]
+        new_comments = sum(
+            1 for i in feed_items for c in i["comments"]["nodes"]
+            if not since_feed_dt or _parse_ts(c["createdAt"]) > since_feed_dt
+        )
+        console.print(f"[green]{len(new_posts)} new post(s), {new_comments} new comment(s) on the feed[/green]")
+
+    threads, err = community.list_my_chat_threads(me)
+    if err:
+        console.print(f"[red]{err}[/red]")
+    else:
+        any_chat_news = False
+        for t in threads:
+            new_msgs = [
+                c for c in t["comments"]["nodes"]
+                if (not since_chat_dt or _parse_ts(c["createdAt"]) > since_chat_dt)
+                and (c["author"]["login"] if c["author"] else "ghost") != me
+            ]
+            if new_msgs:
+                any_chat_news = True
+                other = t["title"][len(community.CHAT_PREFIX):]
+                console.print(f"[cyan]💬 {len(new_msgs)} new message(s) in chat: {other}[/cyan]")
+        if not any_chat_news:
+            console.print("[dim]No new chat messages.[/dim]")
+
+    local_state.set_last_seen("feed", now.isoformat())
+    local_state.set_last_seen("chat", now.isoformat())
+
+
+def search_menu(user_folder, term):
+    prompt = SlashPrompt(SEARCH_COMMANDS)
+    results, truncated = search.search_notes(term, user_folder)
+
+    while True:
+        try:
+            clear_screen()
+            console.print(Panel(f"[bold cyan]🔍 Search results for '{term}'[/bold cyan]", expand=False))
+            if not results:
+                console.print("[yellow]No matches found.[/yellow]")
+            else:
+                table = Table(show_header=True, header_style="bold magenta")
+                table.add_column("No.", justify="right", width=4)
+                table.add_column("Owner", width=14)
+                table.add_column("Subject / File", width=40)
+                table.add_column("Snippet", width=50)
+                for i, r in enumerate(results, 1):
+                    owner_label = r["owner"] or ("you" if user_folder else "global")
+                    table.add_row(str(i), owner_label, f"{r['subject']}/{r['filename']}", r["snippet"])
+                console.print(table)
+                if truncated:
+                    console.print("[dim]Results truncated - refine your search term for more precise matches.[/dim]")
+            console.print()
+            print_help(SEARCH_COMMANDS, "Commands (type / for live suggestions)")
+
+            name, arg = parse_command(prompt.ask())
+            if name is None:
+                continue
+
+            if name == "/back":
+                break
+            elif name == "/help":
+                print_help(SEARCH_COMMANDS, "Search Commands")
+                input("Press Enter to continue...")
+            elif name == "/open":
+                if not arg.isdigit() or not (1 <= int(arg) <= len(results)):
+                    console.print(f"[red]Invalid result number! Choose 1-{len(results)}[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                r = results[int(arg) - 1]
+                view_file_rich(r["owner"] or user_folder, r["subject"], r["filename"])
+            else:
+                console.print("[red]Unknown command. Type / to see the available commands.[/red]")
+                input("Press Enter to continue...")
+
+        except Exception as e:
+            handle_error(e)
+            input("Press Enter to continue...")
+
+
+def format_reactions(groups):
+    parts = []
+    for g in groups or []:
+        count = g["reactors"]["totalCount"]
+        if count == 0:
+            continue
+        emoji = community.REACTION_EMOJI.get(g["content"], g["content"])
+        marker = "*" if g["viewerHasReacted"] else ""
+        parts.append(f"{emoji}{count}{marker}")
+    return "  ".join(parts)
+
+
+def resolve_feed_target(items, index_str):
+    """'2' -> the post itself; '2.1' -> comment 1 of post 2. Returns
+    (item_dict, kind) where kind is 'post' or 'comment', or (None, None)."""
+    post_part, _, comment_part = index_str.partition(".")
+    if not post_part.isdigit() or not (1 <= int(post_part) <= len(items)):
+        return None, None
+    post = items[int(post_part) - 1]
+    if not comment_part:
+        return post, "post"
+    comments = post["comments"]["nodes"]
+    if not comment_part.isdigit() or not (1 <= int(comment_part) <= len(comments)):
+        return None, None
+    return comments[int(comment_part) - 1], "comment"
+
+
+def display_feed(items):
+    if not items:
+        console.print("[yellow]No posts yet. Be the first with /post![/yellow]")
+        return
+    for i, item in enumerate(items, 1):
+        author = item["author"]["login"] if item["author"] else "ghost"
+        text = item.get("body") or item["title"]
+        reactions = format_reactions(item.get("reactionGroups"))
+        header = f"#{i} · @{author} · {item['createdAt']}" + (f" · {reactions}" if reactions else "")
+
+        body = text
+        comments = item["comments"]["nodes"]
+        if comments:
+            body += "\n\n[dim]Comments:[/dim]"
+            for j, c in enumerate(comments, 1):
+                c_author = c["author"]["login"] if c["author"] else "ghost"
+                c_reactions = format_reactions(c.get("reactionGroups"))
+                body += f"\n  [bold]{i}.{j}[/bold] [cyan]@{c_author}[/cyan]: {c['body']}"
+                if c_reactions:
+                    body += f"  {c_reactions}"
+
+        console.print(Panel(body, title=header, expand=False))
+
+
+def feed_menu():
+    """Global knowledge feed - read/write via GitHub Discussions, so any
+    logged-in GitHub account can post/comment with no repo permissions
+    and no merge conflicts (there's no file being shared)."""
+    if not community.is_logged_in():
+        console.print("[yellow]Run /login first to use the global feed.[/yellow]")
+        input("Press Enter to continue...")
+        return
+
+    prompt = SlashPrompt(FEED_COMMANDS)
+    items = []
+
+    def refresh():
+        nonlocal items
+        result, err = animations.with_spinner(console, "📰 Loading feed...", community.list_feed)
+        if err:
+            console.print(f"[red]❌ {err}[/red]")
+            items = []
+        else:
+            items = result
+
+    refresh()
+
+    while True:
+        try:
+            clear_screen()
+            console.print(Panel("[bold cyan]📰 Global Knowledge Feed[/bold cyan]", expand=False))
+            display_feed(items)
+            console.print()
+            print_help(FEED_COMMANDS, "Commands (type / for live suggestions)")
+
+            name, arg = parse_command(prompt.ask())
+            if name is None:
+                continue
+
+            if name == "/back":
+                break
+            elif name == "/help":
+                print_help(FEED_COMMANDS, "Feed Commands")
+                input("Press Enter to continue...")
+            elif name == "/refresh":
+                refresh()
+            elif name == "/post":
+                text = Prompt.ask("[yellow]What do you want to share?[/yellow]").strip()
+                if not text:
+                    console.print("[red]⚠️ Post cannot be empty![/red]")
+                else:
+                    is_first_post = not items
+                    _, err = community.post_to_feed(text)
+                    if err:
+                        console.print(f"[red]❌ {err}[/red]")
+                    else:
+                        if is_first_post:
+                            animations.celebrate(console, "Your first post is live on the feed!")
+                        else:
+                            console.print("[green]✅ Posted![/green]")
+                        refresh()
+                input("Press Enter to continue...")
+            elif name == "/comment":
+                if not arg or " " not in arg:
+                    console.print("[red]Usage: /comment <number> <text>[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                index_str, text = arg.split(" ", 1)
+                if not index_str.isdigit() or not (1 <= int(index_str) <= len(items)):
+                    console.print(f"[red]⚠️ Invalid post number! Choose 1-{len(items)}[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                target = items[int(index_str) - 1]
+                _, err = community.comment_on_feed_post(target["id"], text.strip())
+                if err:
+                    console.print(f"[red]❌ {err}[/red]")
+                else:
+                    console.print("[green]✅ Comment added![/green]")
+                    refresh()
+                input("Press Enter to continue...")
+            elif name == "/react":
+                parts = arg.split(" ", 1)
+                if len(parts) != 2:
+                    console.print("[red]Usage: /react <number> <thumbsup|heart|laugh|hooray|confused|rocket|eyes>[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                index_str, emoji_name = parts
+                content = community.normalize_reaction(emoji_name)
+                target, kind = resolve_feed_target(items, index_str)
+                if not target or not content:
+                    console.print("[red]Usage: /react <post-number>[.<comment-number>] <emoji>[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                currently = community.has_reacted(target, content)
+                _, err = community.toggle_reaction(target["id"], content, currently)
+                if err:
+                    console.print(f"[red]{err}[/red]")
+                else:
+                    refresh()
+            else:
+                console.print("[red]Unknown command. Type / to see the available commands.[/red]")
+                input("Press Enter to continue...")
+
+        except Exception as e:
+            handle_error(e)
+            input("Press Enter to continue...")
+
+
+def display_chat(thread, me):
+    comments = thread["comments"]["nodes"]
+    if not comments:
+        console.print("[yellow]No messages yet. Say hello with /say![/yellow]")
+        return
+    for i, c in enumerate(comments, 1):
+        author = c["author"]["login"] if c["author"] else "ghost"
+        who = "[green]You[/green]" if author == me else f"[cyan]@{author}[/cyan]"
+        reactions = format_reactions(c.get("reactionGroups"))
+        console.print(f"[bold]{i}[/bold] {who} · [dim]{c['createdAt']}[/dim]\n  {c['body']}" + (f"  {reactions}" if reactions else "") + "\n")
+
+
+def chat_menu(other_username):
+    """Async chat over a GitHub Discussion thread - not real-time, but
+    permission-less and conflict-free like the rest of the community layer.
+    Run /refresh (or just re-open /chat later) to pick up new replies."""
+    if not community.is_logged_in():
+        console.print("[yellow]Run /login first to chat.[/yellow]")
+        input("Press Enter to continue...")
+        return
+
+    me = community.current_username()
+    if me and me.lower() == other_username.lower():
+        console.print("[yellow]You can't chat with yourself.[/yellow]")
+        input("Press Enter to continue...")
+        return
+
+    prompt = SlashPrompt(CHAT_COMMANDS)
+    thread = {"id": None, "comments": {"nodes": []}}
+
+    def refresh():
+        nonlocal thread
+        result, err = animations.with_spinner(
+            console, "💬 Checking for messages...", community.get_or_create_chat_thread, me, other_username
+        )
+        if err:
+            console.print(f"[red]❌ {err}[/red]")
+        else:
+            thread = result
+
+    refresh()
+
+    while True:
+        try:
+            clear_screen()
+            console.print(Panel(
+                f"[bold cyan]💬 Chat with @{other_username}[/bold cyan]\n"
+                "[dim]Async - messages sync whenever either of you runs /chat or /refresh[/dim]",
+                expand=False,
+            ))
+            display_chat(thread, me)
+            console.print()
+            print_help(CHAT_COMMANDS, "Commands (type / for live suggestions)")
+
+            name, arg = parse_command(prompt.ask())
+            if name is None:
+                continue
+
+            if name == "/back":
+                break
+            elif name == "/help":
+                print_help(CHAT_COMMANDS, f"Chat with @{other_username}")
+                input("Press Enter to continue...")
+            elif name == "/refresh":
+                refresh()
+            elif name == "/say":
+                if not arg:
+                    console.print("[red]Usage: /say <message>[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                if not thread.get("id"):
+                    console.print("[red]Chat thread isn't ready yet - try /refresh.[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                _, err = community.send_chat_message(thread["id"], arg)
+                if err:
+                    console.print(f"[red]{err}[/red]")
+                else:
+                    refresh()
+            elif name == "/react":
+                parts = arg.split(" ", 1)
+                messages = thread["comments"]["nodes"]
+                if len(parts) != 2 or not parts[0].isdigit() or not (1 <= int(parts[0]) <= len(messages)):
+                    console.print("[red]Usage: /react <message-number> <thumbsup|heart|laugh|hooray|confused|rocket|eyes>[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                index_str, emoji_name = parts
+                content = community.normalize_reaction(emoji_name)
+                if not content:
+                    console.print("[red]Unknown emoji. Try: thumbsup, heart, laugh, hooray, confused, rocket, eyes[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                target = messages[int(index_str) - 1]
+                currently = community.has_reacted(target, content)
+                _, err = community.toggle_reaction(target["id"], content, currently)
+                if err:
+                    console.print(f"[red]{err}[/red]")
+                else:
+                    refresh()
             else:
                 console.print("[red]Unknown command. Type / to see the available commands.[/red]")
                 input("Press Enter to continue...")

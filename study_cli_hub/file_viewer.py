@@ -10,6 +10,11 @@ from study_cli_hub.paths import note_path
 
 console = Console()
 
+TEXT_EXTENSIONS = {
+    "txt", "md", "py", "json", "js", "html", "css", "xml", "yaml", "yml",
+    "ini", "cfg", "conf", "log", "sh", "bat", "ps1",
+}
+
 try:
     import PyPDF2
 except:
@@ -746,7 +751,7 @@ def view_file_rich(user_folder, subject, filename, editable=False):
             return
 
         # Text-based files (interactive reader)
-        if ext in ["txt", "md", "py", "json", "js", "html", "css", "xml", "yaml", "yml", "ini", "cfg", "conf", "log", "sh", "bat", "ps1"]:
+        if ext in TEXT_EXTENSIONS:
             interactive_text_reader(path, filename)
             
         # PDF files

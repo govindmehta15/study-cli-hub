@@ -1,0 +1,55 @@
+name: Auto-merge data-only PRs
+
+# Using the app (adding subjects/notes) should be hassle-free for anyone;
+# changing the app's code should always need a human. This workflow
+# auto-approves and auto-merges pull requests that ONLY touch subjects/** -
+# including ones from forks (that's why it's pull_request_target, not
+# pull_request: forked PRs otherwise run with a read-only token and can't be
+# merged). It never checks out the PR's code, only inspects the changed file
+# list via the API, so it's safe even though it runs with write permissions.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  auto-merge-if-data-only:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if this PR only touches subjects/**, and merge it if so
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const isDataOnly = files.length > 0 && files.every(f => f.filename.startsWith("subjects/"));
+
+            if (!isDataOnly) {
+              core.info("PR touches code paths - leaving it for CODEOWNERS review.");
+              return;
+            }
+
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              event: "APPROVE",
+              body: "Auto-approved: this PR only adds/changes files under subjects/**.",
+            });
+
+            await github.rest.pulls.merge({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              merge_method: "squash",
+            });

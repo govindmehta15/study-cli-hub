@@ -1,0 +1,12 @@
+# Code changes need maintainer review before merging.
+#
+# subjects/** is intentionally NOT listed here - PRs that only touch
+# subjects/** (i.e. someone using the app, not changing it) don't need a
+# code owner and are auto-approved + auto-merged by
+# .github/workflows/auto-merge-data-prs.yml instead.
+
+/study_cli_hub/      @govindmehta15
+/pyproject.toml      @govindmehta15
+/.github/            @govindmehta15
+/README.md           @govindmehta15
+/.gitignore          @govindmehta15

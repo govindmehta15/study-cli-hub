@@ -21,15 +21,18 @@ USER_API_URL = "https://api.github.com/user"
 SCOPE = "repo"
 
 
-def _config_dir():
+def config_dir():
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
     path = os.path.join(base, "study-cli-hub")
     os.makedirs(path, exist_ok=True)
     return path
 
 
+_config_dir = config_dir  # kept for any existing internal call sites
+
+
 def _config_file():
-    return os.path.join(_config_dir(), "credentials.json")
+    return os.path.join(config_dir(), "credentials.json")
 
 
 def save_token(data):
@@ -92,7 +95,7 @@ def login(console):
     expires_in = payload.get("expires_in", 900)
 
     console.print(Panel(
-        f"[bold cyan]Connect your GitHub account[/bold cyan]\n\n"
+        f"[bold cyan]🔗 Connect your GitHub account[/bold cyan]\n\n"
         f"1. Open [bold]{verification_uri}[/bold] in a browser\n"
         f"2. Enter this code: [bold yellow]{user_code}[/bold yellow]\n\n"
         f"[dim]Waiting for you to approve...[/dim]",
@@ -152,21 +155,21 @@ def login(console):
         username = None
 
     save_token({"access_token": access_token, "login": username})
-    console.print(f"[green]Logged in to GitHub as {username or 'unknown user'}[/green]")
+    console.print(f"[green]✅ Logged in to GitHub as {username or 'unknown user'}[/green]")
     return True
 
 
 def logout(console):
     clear_token()
-    console.print("[green]Logged out of GitHub[/green]")
+    console.print("[green]✅ Logged out of GitHub[/green]")
 
 
 def whoami(console):
     token = load_token()
     if not token:
-        console.print("[yellow]Not logged in. Run /login to connect your GitHub account.[/yellow]")
+        console.print("[yellow]⚠️ Not logged in. Run /login to connect your GitHub account.[/yellow]")
         return
-    console.print(f"[cyan]Logged in as:[/cyan] {token.get('login', 'unknown')}")
+    console.print(f"[cyan]👤 Logged in as:[/cyan] {token.get('login', 'unknown')}")
 
 
 def _authenticated_url(remote_url, access_token):
