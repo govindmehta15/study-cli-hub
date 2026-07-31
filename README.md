@@ -12,27 +12,66 @@ nothing here ever blocks automation.
 
 ---
 
-## 🚀 Install (no manual dependency wrangling)
+## 🚀 Install
 
-The recommended way to run CLI Study Hub is with [`pipx`](https://pipx.pypa.io)
-or [`uvx`](https://docs.astral.sh/uv/guides/tools/), which install the app
-into its own isolated environment and pull in every dependency for you —
-there's nothing else to install by hand.
+**The only real requirement is Python 3.9+.** Everything else (`rich`,
+`prompt_toolkit`, `requests`, `PyPDF2`, `python-docx`, `lxml`) is declared as
+a normal dependency in [`pyproject.toml`](pyproject.toml) and gets pulled in
+automatically by whichever installer you use below — there's nothing to
+install by hand beyond Python itself and one small installer tool.
+
+`study-cli-hub` is [published on PyPI](https://pypi.org/project/study-cli-hub/),
+so any of these work on macOS, Linux, or Windows:
+
+### Option A — [`uv`](https://docs.astral.sh/uv/) (recommended)
+
+`uv` manages its own Python builds, so it isn't affected by a broken or
+missing system/Homebrew Python — the most reliable option if you've ever
+had installer trouble with Python before.
 
 ```bash
-# one-time install, then just run `study-hub` any time
-pipx install study-cli-hub
+# 1. Install uv itself (one time):
+curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
+# or on Windows (PowerShell):
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-# or run it without installing anything permanently
+# 2. Install the app:
+uv tool install study-cli-hub
+
+# ...or skip installing it permanently and just run it once:
 uvx study-cli-hub
 ```
 
-> 📦 **Not on PyPI yet?** Until the maintainer publishes the first release
-> (see [Publishing a release](#-publishing-a-release-maintainers) below),
-> install straight from this repo:
+### Option B — [`pipx`](https://pipx.pypa.io)
+
+```bash
+# 1. Install pipx itself (one time):
+brew install pipx && pipx ensurepath          # macOS (Homebrew)
+sudo apt install pipx && pipx ensurepath      # Debian/Ubuntu
+python3 -m pip install --user pipx && python3 -m pipx ensurepath   # any other Linux/Windows
+
+# 2. Install the app:
+pipx install study-cli-hub
+```
+
+> ⚠️ **Known issue on macOS:** if `pipx install` fails with
+> `Broken Python installation, platform.mac_ver() returned an empty value`,
+> that's a bug in a specific Homebrew Python bottle (seen with `python@3.14`),
+> not with `study-cli-hub`. Point pipx at a different interpreter instead:
 > ```bash
-> pipx install "git+https://github.com/govindmehta15/study-cli-hub.git"
+> pipx install --python /usr/bin/python3 study-cli-hub
 > ```
+> (or `--python $(brew --prefix python@3.12)/bin/python3.12` if you have that
+> version installed). If you hit this, `uv` (Option A) avoids the whole class
+> of problem since it never touches your system Python at all.
+
+### Option C — plain `pip` (zero extra tools, if you'd rather not install `uv`/`pipx`)
+
+```bash
+python3 -m venv ~/.study-cli-hub-venv
+~/.study-cli-hub-venv/bin/pip install study-cli-hub
+# then use ~/.study-cli-hub-venv/bin/study-hub, or add it to your shell's PATH/alias
+```
 
 ### Run it
 
@@ -249,21 +288,18 @@ second-person review on your own changes too.
 
 ---
 
-## 📦 Publishing a release (maintainers)
+## 📦 Publishing a new release (maintainers)
 
-This repo ships a `.github/workflows/publish.yml` that builds and uploads
-the package to PyPI whenever you publish a GitHub Release, using
-[PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (no
-API tokens to store as secrets):
+[study-cli-hub](https://pypi.org/project/study-cli-hub/) is already live on
+PyPI via a one-time [Trusted Publisher](https://docs.pypi.org/trusted-publishers/)
+link (no API tokens stored anywhere). Shipping a new version is just:
 
-1. Create the project once on PyPI (`pip install build twine`, then
-   `python -m build && twine upload dist/*` for the very first upload — or
-   reserve the name via PyPI's UI).
-2. On the PyPI project's **Settings → Publishing**, add a trusted publisher
-   pointing at this GitHub repo, workflow file `publish.yml`, and
-   environment `pypi`.
-3. From then on, cutting a GitHub Release automatically publishes the new
-   version — `pipx install study-cli-hub` picks it up immediately.
+1. Bump `version` in `pyproject.toml`, land it through the normal
+   code-review PR flow (see [Contribution Guide](#-contribution-guide)).
+2. `gh release create vX.Y.Z --generate-notes` (or via the GitHub UI).
+3. That's it — `.github/workflows/publish.yml` builds and uploads
+   automatically. `uv tool install study-cli-hub` / `pipx upgrade
+   study-cli-hub` pick up the new version immediately.
 
 ---
 
@@ -327,9 +363,13 @@ on desktop or mobile without installing anything.
 
 ## 🧰 Requirements
 
-* Python ≥ 3.9
-* Git (for cloning & syncing)
-* A terminal — `pipx`/`uvx` handle every Python dependency automatically
+* **Python ≥ 3.9** — the only hard requirement. Every other Python package
+  (`rich`, `prompt_toolkit`, `requests`, `PyPDF2`, `python-docx`, `lxml`) is
+  installed automatically by `uv`/`pipx`/`pip` — you never install these by hand.
+* **Git** — for cloning the repo and for `/sync` to work.
+* **`uv` or `pipx`** (recommended, not strictly required) — see
+  [Install](#-install) above for exact commands per OS. Option C shows how to
+  install with plain `pip` and no extra tool at all, if you'd rather not.
 
 ---
 
