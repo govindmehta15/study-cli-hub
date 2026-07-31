@@ -8,12 +8,13 @@ import time
 import requests
 from rich.panel import Panel
 
-# Public OAuth App client ID (Device Flow enabled, no client secret needed).
-# Maintainers: register an OAuth App at https://github.com/settings/developers
-# with "Enable Device Flow" checked, then set this via env var so you don't
-# have to hardcode it in source:
+# Public OAuth App client ID (Device Flow enabled, no client secret needed -
+# this is a public identifier, not a credential, so it's safe to commit).
+# Registered at https://github.com/settings/developers under CLI Study Hub.
+# Override via env var if you want to point at your own OAuth App instead:
 #   export STUDY_HUB_GITHUB_CLIENT_ID=Iv1.xxxxxxxxxxxxxxxx
-GITHUB_CLIENT_ID = os.environ.get("STUDY_HUB_GITHUB_CLIENT_ID", "")
+DEFAULT_GITHUB_CLIENT_ID = "Ov23liWI6vMmmSYK1N2U"
+GITHUB_CLIENT_ID = os.environ.get("STUDY_HUB_GITHUB_CLIENT_ID", DEFAULT_GITHUB_CLIENT_ID)
 
 DEVICE_CODE_URL = "https://github.com/login/device/code"
 TOKEN_URL = "https://github.com/login/oauth/access_token"
@@ -68,9 +69,10 @@ def login(console):
     if not is_configured():
         console.print(Panel(
             "[bold red]GitHub login isn't configured yet[/bold red]\n\n"
-            "The maintainer needs to register a GitHub OAuth App (with "
-            "'Enable Device Flow' turned on) and set STUDY_HUB_GITHUB_CLIENT_ID.\n"
-            "See the README's 'GitHub login setup' section.",
+            "STUDY_HUB_GITHUB_CLIENT_ID is set to an empty value in this "
+            "environment, overriding the built-in default. Unset it, or "
+            "point it at your own OAuth App (Device Flow enabled).\n"
+            "See the README's '/login's OAuth App' section.",
             expand=False,
         ))
         return False
