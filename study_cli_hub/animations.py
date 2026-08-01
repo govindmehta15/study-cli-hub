@@ -7,6 +7,7 @@
 # own testing, so nothing here may change what gets printed or block on
 # time.sleep() when non-interactive.
 import random
+import string
 import sys
 import time
 
@@ -163,6 +164,31 @@ SUBJECT_THEMES = {
     "space": ("🚀🌌⭐🪐", "blue"),
     "science": ("⚛🧪🔬∑", "cyan"),
 }
+
+
+# Special-character + letter pool for glitch_reveal()'s scramble effect.
+GLITCH_CHARS = "~₹!@#$%^&*()_-+=\\|:;\"'<,>.?/{[}]" + string.ascii_uppercase
+
+
+def glitch_reveal(console, text, style="bold cyan", cycles=10, delay=0.02):
+    """Big 'decoding' effect: every character cycles through random special
+    symbols/letters before locking into place left-to-right, until the real
+    text is fully revealed. Degrades to printing `text` instantly, unchanged,
+    when non-interactive."""
+    if not is_interactive():
+        console.print(text, style=style)
+        return
+    length = len(text)
+    for frame in range(1, cycles + 1):
+        settled = int(length * frame / cycles)
+        display = [
+            ch if (ch == " " or i < settled) else random.choice(GLITCH_CHARS)
+            for i, ch in enumerate(text)
+        ]
+        console.print(f"\r{''.join(display)}", style=style, end="")
+        console.file.flush()
+        time.sleep(delay)
+    console.print()
 
 
 def detect_theme(subject_name):
