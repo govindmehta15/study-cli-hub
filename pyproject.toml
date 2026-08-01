@@ -27,6 +27,12 @@ dependencies = [
     "lxml>=4.9.0",
 ]
 
+[project.optional-dependencies]
+# Only needed for AI-generated /quiz questions (BYOK - bring your own
+# ANTHROPIC_API_KEY). Kept optional so the core install stays lightweight
+# for everyone who never uses that one feature.
+ai = ["anthropic>=0.40.0"]
+
 [project.urls]
 Homepage = "https://github.com/govindmehta15/study-cli-hub"
 Repository = "https://github.com/govindmehta15/study-cli-hub"

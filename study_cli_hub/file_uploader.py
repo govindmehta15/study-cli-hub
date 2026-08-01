@@ -1,10 +1,11 @@
 # file_uploader.py
-import os, shutil
+import os, platform, shutil, subprocess
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
 from rich.panel import Panel
 from rich.text import Text
+from study_cli_hub.animations import glitch_reveal
 from study_cli_hub.error_handler import handle_error
 from study_cli_hub.paths import subject_path
 
@@ -36,6 +37,72 @@ def get_file_size(path):
         return f"{size:.1f} TB"
     except:
         return "Unknown"
+
+def native_picker_label():
+    """What to call the OS's native file picker in prompts."""
+    system = platform.system()
+    if system == "Darwin":
+        return "Finder"
+    if system == "Windows":
+        return "File Explorer"
+    return "file manager"
+
+
+def open_native_file_picker():
+    """Tries to open the OS's native file-picker dialog and returns the
+    chosen path, or None if unavailable/cancelled/errored - callers should
+    fall back to the in-terminal browser (browse_files) in that case, which
+    is exactly what happens over SSH/headless sessions with no GUI."""
+    system = platform.system()
+    try:
+        if system == "Darwin":
+            result = subprocess.run(
+                ["osascript", "-e", 'POSIX path of (choose file with prompt "Select a file to upload")'],
+                capture_output=True, text=True, timeout=180,
+            )
+            return result.stdout.strip() or None if result.returncode == 0 else None
+
+        if system == "Windows":
+            ps_script = (
+                "Add-Type -AssemblyName System.Windows.Forms; "
+                "$f = New-Object System.Windows.Forms.OpenFileDialog; "
+                "$f.Title = 'Select a file to upload'; "
+                "if ($f.ShowDialog() -eq 'OK') { Write-Output $f.FileName }"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_script],
+                capture_output=True, text=True, timeout=180,
+            )
+            return result.stdout.strip() or None
+
+        # Linux: try common native dialogs first
+        if shutil.which("zenity"):
+            result = subprocess.run(
+                ["zenity", "--file-selection", "--title=Select a file to upload"],
+                capture_output=True, text=True, timeout=180,
+            )
+            return result.stdout.strip() or None if result.returncode == 0 else None
+        if shutil.which("kdialog"):
+            result = subprocess.run(
+                ["kdialog", "--getopenfilename"], capture_output=True, text=True, timeout=180,
+            )
+            return result.stdout.strip() or None if result.returncode == 0 else None
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+    # Last-resort cross-platform attempt (works if a Tk/Tcl install is
+    # present, which isn't guaranteed on minimal/headless systems).
+    try:
+        import tkinter
+        from tkinter import filedialog
+        root = tkinter.Tk()
+        root.withdraw()
+        path = filedialog.askopenfilename(title="Select a file to upload")
+        root.destroy()
+        return path or None
+    except Exception:
+        return None
+
 
 def browse_files(current_dir=None):
     """Interactive file browser"""
@@ -91,16 +158,35 @@ def browse_files(current_dir=None):
             console.print(table)
             
             # Get user choice
-            choice = Prompt.ask("\n[yellow]Enter number to select, 'back' to go back, or 'path' to enter path manually[/yellow]")
-            
+            choice = Prompt.ask(
+                "\n[yellow]Enter number to select, 'back', or type/paste a path to jump straight there "
+                "(a folder path navigates into it, a file path selects it)[/yellow]"
+            )
+
             if choice.lower() == "back":
                 return None
             elif choice.lower() == "path":
-                manual_path = Prompt.ask("[yellow]Enter full file path[/yellow]").strip()
-                if os.path.exists(manual_path) and os.path.isfile(manual_path):
+                # Legacy explicit prompt, kept for anyone used to typing "path" first.
+                manual_path = Prompt.ask("[yellow]Enter full path[/yellow]").strip()
+                manual_path = os.path.expanduser(manual_path)
+                if os.path.isfile(manual_path):
                     return manual_path
+                elif os.path.isdir(manual_path):
+                    current_dir = manual_path
+                    continue
                 else:
-                    console.print("[red]❌ Invalid file path[/red]")
+                    console.print("[red]❌ Invalid path[/red]")
+                    continue
+            elif os.path.sep in choice or choice.startswith("~"):
+                # Looks like a path typed/pasted directly - jump straight there.
+                jump_path = os.path.expanduser(choice.strip())
+                if os.path.isfile(jump_path):
+                    return jump_path
+                elif os.path.isdir(jump_path):
+                    current_dir = jump_path
+                    continue
+                else:
+                    console.print(f"[red]❌ '{jump_path}' isn't a file or folder that exists[/red]")
                     continue
             
             try:
@@ -136,11 +222,29 @@ def upload_file(user_folder, subject):
     try:
         console.print(Panel("[bold green]📤 File Upload[/bold green]", expand=False))
         console.print(f"[yellow]Supported formats: {', '.join(ALLOWED_FORMATS)}[/yellow]")
-        
-        # Let user choose between file browser or manual path
-        choice = Prompt.ask("\n[yellow]Choose upload method:[/yellow]", choices=["browse", "path"], default="browse")
-        
-        if choice == "browse":
+
+        # Let user choose between the native OS file picker, the in-terminal
+        # browser, or typing a path manually.
+        picker_label = native_picker_label()
+        choice = Prompt.ask(
+            f"\n[yellow]Choose upload method:[/yellow] ([cyan]{picker_label}[/cyan] / terminal browse / type a path)",
+            choices=["native", "browse", "path"],
+            default="native",
+        )
+
+        if choice == "native":
+            console.print(f"[dim]Opening {picker_label}...[/dim]")
+            path = open_native_file_picker()
+            if not path:
+                console.print(
+                    f"[yellow]{picker_label} isn't available here (e.g. no display/SSH session) "
+                    "or nothing was selected - switching to in-terminal folder navigation.[/yellow]"
+                )
+                path = browse_files()
+            if not path:
+                console.print("[yellow]Upload cancelled[/yellow]")
+                return
+        elif choice == "browse":
             path = browse_files()
             if not path:
                 console.print("[yellow]Upload cancelled[/yellow]")
@@ -188,7 +292,7 @@ def upload_file(user_folder, subject):
             console.print(f"[yellow]⚠️ File exists, saving as: {os.path.basename(dest_path)}[/yellow]")
         
         shutil.copy2(path, dest_path)
-        console.print(f"[green]✅ File uploaded successfully to '{dest_path}'[/green]")
+        glitch_reveal(console, f"✅ Uploaded: {os.path.basename(dest_path)}", style="bold green")
         
     except Exception as e:
         handle_error(e)

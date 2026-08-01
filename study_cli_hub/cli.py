@@ -1,6 +1,8 @@
 # cli.py - Study CLI Hub v5.0 entry point
 import atexit
+import difflib
 import os
+import random
 import signal
 import subprocess
 import sys
@@ -10,18 +12,19 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 from rich.align import Align
 from rich.console import Console
-from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
-from study_cli_hub import animations, community, contribute, github_auth, local_state, search, stats
+from study_cli_hub import animations, community, contribute, github_auth, local_state, quiz, search, stats
+from study_cli_hub.animations import cli_panel as Panel
 from study_cli_hub.completer import SlashCompleter
 from study_cli_hub.doc_repair import repair_document
 from study_cli_hub.error_handler import handle_error
 from study_cli_hub.file_uploader import upload_file
-from study_cli_hub.file_viewer import view_file_rich
+from study_cli_hub.file_viewer import open_in_editor, view_file_rich
 from study_cli_hub.paths import (
+    list_global_subjects,
     list_known_users,
     list_notes,
     list_subjects,
@@ -38,6 +41,7 @@ MAIN_COMMANDS = [
     ("/switch-user", "", "Switch user folder or global mode"),
     ("/explore", "", "Explore other users' study content"),
     ("/search", "<term>", "Full-text search your and others' notes"),
+    ("/quiz", "<subject|number>", "Quiz yourself (flashcards or AI-generated)"),
     ("/stats", "", "Show your subjects/notes/streak dashboard"),
     ("/leaderboard", "", "Rank all known users by streak/activity"),
     ("/digest", "", "See what's new since your last visit"),
@@ -62,7 +66,7 @@ SUBJECT_COMMANDS = [
 ]
 
 EXPLORE_COMMANDS = [
-    ("/open", "<username|number>", "Browse a user's subjects (read-only)"),
+    ("/open", "<name|number>", "Browse a user or global subject (read-only)"),
     ("/help", "", "Show available commands"),
     ("/back", "", "Return to the main menu"),
 ]
@@ -110,8 +114,8 @@ class SlashPrompt:
     """A '/' command prompt with a live, prefix-filtered menu (falls back to
     plain input when not attached to a real terminal, e.g. in scripts/CI)."""
 
-    def __init__(self, commands):
-        self.completer = SlashCompleter(commands)
+    def __init__(self, commands, argument_candidates=None):
+        self.completer = SlashCompleter(commands, argument_candidates=argument_candidates)
         self._session = None
         if sys.stdin.isatty():
             try:
@@ -327,29 +331,54 @@ def resolve_choice(items, target, kind="item"):
 
 
 def create_subject(user_folder):
-    """Create a new subject with description"""
+    """Create a new subject with description, guided step by step."""
     try:
-        name = Prompt.ask("[yellow]Enter new subject name[/yellow]").strip()
+        console.print(Panel("[bold cyan]📚 Create a New Subject[/bold cyan]", expand=False))
+
+        name = Prompt.ask("[yellow]Subject name[/yellow]").strip()
         if not name:
             console.print("[red]⚠️ Subject name cannot be empty![/red]")
+            return
+        if os.path.sep in name or (os.path.altsep and os.path.altsep in name) or ".." in name:
+            console.print("[red]⚠️ Subject name can't contain path separators or '..'[/red]")
             return
 
         path = subject_path(user_folder, name)
         if os.path.exists(path):
-            console.print(f"[red]⚠️ Subject '{name}' already exists![/red]")
+            console.print(f"[red]⚠️ Subject '{name}' already exists! Use /study {name} to open it.[/red]")
             return
 
-        is_first_subject = user_folder and not list_subjects(user_folder)
+        existing = list_subjects(user_folder)
+        close_matches = difflib.get_close_matches(name, existing, n=3, cutoff=0.75)
+        if close_matches:
+            console.print(f"[yellow]⚠️ This looks similar to existing subject(s): {', '.join(close_matches)}[/yellow]")
+            if Prompt.ask("[yellow]Create it anyway?[/yellow]", choices=["yes", "no"], default="no") != "yes":
+                console.print("[yellow]Cancelled.[/yellow]")
+                return
+
+        description = Prompt.ask("[yellow]Short description[/yellow] [dim](optional)[/dim]").strip()
+        if not description:
+            description = f"Notes for {name}"
+
+        console.print()
+        console.print(Panel(f"[bold]Name:[/bold] {name}\n[bold]Description:[/bold] {description}", title="Review", expand=False))
+        if Prompt.ask("[yellow]Create this subject?[/yellow]", choices=["yes", "no"], default="yes") != "yes":
+            console.print("[yellow]Cancelled.[/yellow]")
+            return
+
+        is_first_subject = user_folder and not existing
 
         os.makedirs(path, exist_ok=True)
-        description = Prompt.ask("[yellow]Enter short description[/yellow]").strip()
         with open(os.path.join(path, f"description_{name}.txt"), "w", encoding="utf-8") as f:
             f.write(description)
 
         if is_first_subject:
-            animations.celebrate(console, f"Your first subject, '{name}', is live!")
-        else:
+            animations.rocket_launch(console, f"Your first subject, '{name}', is live!")
+        elif not animations.science_animation(console, name, f"'{name}' is ready to explore!"):
             console.print(f"[green]✅ Subject '{name}' created successfully![/green]")
+
+        if Prompt.ask("[yellow]Add a note now?[/yellow]", choices=["yes", "no"], default="yes") == "yes":
+            create_new_note(user_folder, name)
     except Exception as e:
         handle_error(e)
 
@@ -361,15 +390,19 @@ def create_new_note(user_folder, subject):
         if not filename:
             console.print("[red]⚠️ Filename cannot be empty![/red]")
             return
+        if os.path.sep in filename or (os.path.altsep and os.path.altsep in filename) or ".." in filename:
+            console.print("[red]⚠️ Filename can't contain path separators or '..'[/red]")
+            return
         if "." not in filename:
             filename += ".txt"
 
         path = note_path(user_folder, subject, filename)
         if os.path.exists(path):
-            console.print(f"[red]⚠️ File '{filename}' already exists![/red]")
+            console.print(f"[red]⚠️ File '{filename}' already exists! Use /edit instead.[/red]")
             return
 
-        content = Prompt.ask("[yellow]Enter initial content (optional)[/yellow]").strip()
+        console.print(f"[dim]Creating '{filename}' - opens your editor if $EDITOR is set.[/dim]")
+        content = open_in_editor("")
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
         console.print(f"[green]✅ Created new note: {filename}[/green]")
@@ -518,6 +551,15 @@ def main():
                     continue
                 search_menu(user_folder, arg)
 
+            elif name == "/quiz":
+                if not arg:
+                    console.print("[red]Usage: /quiz <subject|number>[/red]")
+                    input("Press Enter to continue...")
+                    continue
+                subject = resolve_choice(subjects, arg, kind="subject")
+                if subject:
+                    quiz_menu(user_folder, subject)
+
             elif name == "/stats":
                 if not user_folder:
                     console.print("[yellow]Stats/streaks need a personal user folder - /switch-user to one first.[/yellow]")
@@ -625,23 +667,49 @@ def subject_menu(user_folder, subject):
 
 
 def explore_menu(current_user_folder):
-    """Read-only browsing of other users' subjects/notes."""
-    prompt = SlashPrompt(EXPLORE_COMMANDS)
+    """Read-only browsing of everyone's content: other users' subjects AND
+    every global subject, in one list. Type '/open <part-of-a-name>' and
+    matching entries appear live as you type, the same way slash commands
+    do."""
+
+    def combined_entries():
+        users = list_known_users(exclude=current_user_folder)
+        # An empty personal folder (no subjects created yet) is
+        # indistinguishable from an empty global subject by the on-disk
+        # heuristic alone - explicitly exclude the current user's own
+        # folder so it never shows up as something to "explore".
+        globals_ = [g for g in list_global_subjects() if g != current_user_folder]
+        return [("user", u) for u in users] + [("global", g) for g in globals_]
+
+    def argument_provider():
+        candidates = []
+        for kind, name_ in combined_entries():
+            if kind == "user":
+                candidates.append((name_, f"👤 user - {len(list_subjects(name_))} subject(s)"))
+            else:
+                candidates.append((name_, f"🌍 global subject - {len(list_notes(None, name_))} note(s)"))
+        return candidates
+
+    prompt = SlashPrompt(EXPLORE_COMMANDS, argument_candidates={"/open": argument_provider})
 
     while True:
         try:
             clear_screen()
-            users = list_known_users(exclude=current_user_folder)
-            console.print(Panel("[bold cyan]Explore Other Users[/bold cyan]", expand=False))
-            if not users:
-                console.print("[yellow]No other users' folders found yet.[/yellow]")
+            entries = combined_entries()
+            console.print(Panel("[bold cyan]🌍 Explore Everyone's Content[/bold cyan]", expand=False))
+            if not entries:
+                console.print("[yellow]Nothing to explore yet.[/yellow]")
             else:
                 table = Table(show_header=True, header_style="bold magenta")
                 table.add_column("No.", justify="right", width=4)
-                table.add_column("Username", width=30)
-                table.add_column("Subjects", justify="right", width=10)
-                for i, u in enumerate(users, 1):
-                    table.add_row(str(i), u, str(len(list_subjects(u))))
+                table.add_column("Name", width=26)
+                table.add_column("Type", width=18)
+                table.add_column("Contains", justify="right", width=14)
+                for i, (kind, name_) in enumerate(entries, 1):
+                    if kind == "user":
+                        table.add_row(str(i), name_, "👤 User", f"{len(list_subjects(name_))} subjects")
+                    else:
+                        table.add_row(str(i), name_, "🌍 Global subject", f"{len(list_notes(None, name_))} notes")
                 console.print(table)
             console.print()
             print_help(EXPLORE_COMMANDS, "Commands (type / for live suggestions)")
@@ -657,12 +725,17 @@ def explore_menu(current_user_folder):
                 input("Press Enter to continue...")
             elif name == "/open":
                 if not arg:
-                    console.print("[red]Usage: /open <username|number>[/red]")
+                    console.print("[red]Usage: /open <name|number>[/red]")
                     input("Press Enter to continue...")
                     continue
-                target_user = resolve_choice(users, arg, kind="user")
-                if target_user:
-                    explore_user_menu(target_user)
+                names_only = [n for _, n in entries]
+                target = resolve_choice(names_only, arg, kind="entry")
+                if target:
+                    kind_by_name = dict((n, k) for k, n in entries)
+                    if kind_by_name[target] == "user":
+                        explore_user_menu(target)
+                    else:
+                        explore_subject_menu(None, target)
             else:
                 console.print("[red]Unknown command. Type / to see the available commands.[/red]")
                 input("Press Enter to continue...")
@@ -765,7 +838,7 @@ def show_stats(user_folder):
         streak_line += f" (last active {data['last_active']})"
     console.print(streak_line)
     if data["streak"] in STREAK_MILESTONES:
-        animations.celebrate(console, f"{data['streak']}-day streak! Keep it going!")
+        animations.streak_fire(console, data["streak"], f"{data['streak']}-day streak! Keep it going!")
 
 
 def show_leaderboard():
@@ -846,11 +919,13 @@ def search_menu(user_folder, term):
                 table = Table(show_header=True, header_style="bold magenta")
                 table.add_column("No.", justify="right", width=4)
                 table.add_column("Owner", width=14)
-                table.add_column("Subject / File", width=40)
-                table.add_column("Snippet", width=50)
+                table.add_column("Subject / File", width=32)
+                table.add_column("At", width=10)
+                table.add_column("Snippet", width=44)
                 for i, r in enumerate(results, 1):
                     owner_label = r["owner"] or ("you" if user_folder else "global")
-                    table.add_row(str(i), owner_label, f"{r['subject']}/{r['filename']}", r["snippet"])
+                    at = f"{r['location_kind']} {r['location']}" if r["location"] else "-"
+                    table.add_row(str(i), owner_label, f"{r['subject']}/{r['filename']}", at, r["snippet"])
                 console.print(table)
                 if truncated:
                     console.print("[dim]Results truncated - refine your search term for more precise matches.[/dim]")
@@ -872,7 +947,7 @@ def search_menu(user_folder, term):
                     input("Press Enter to continue...")
                     continue
                 r = results[int(arg) - 1]
-                view_file_rich(r["owner"] or user_folder, r["subject"], r["filename"])
+                view_file_rich(r["owner"] or user_folder, r["subject"], r["filename"], jump_to=r["location"])
             else:
                 console.print("[red]Unknown command. Type / to see the available commands.[/red]")
                 input("Press Enter to continue...")
@@ -880,6 +955,100 @@ def search_menu(user_folder, term):
         except Exception as e:
             handle_error(e)
             input("Press Enter to continue...")
+
+
+def quiz_menu(user_folder, subject):
+    """Quiz yourself on a subject: flashcards (Q:/A: pairs in your notes,
+    always free) and/or AI-generated multiple choice (BYOK ANTHROPIC_API_KEY)."""
+    flashcards = quiz.collect_flashcards(user_folder, subject)
+    ai_available = quiz.is_ai_configured()
+
+    if not flashcards and not ai_available:
+        console.print(Panel(
+            "[bold yellow]No quiz material yet[/bold yellow]\n\n"
+            "Add flashcards to any note in this subject with lines like:\n"
+            "  Q: Your question here\n"
+            "  A: Your answer here\n\n"
+            "Or set ANTHROPIC_API_KEY to generate multiple-choice questions "
+            "from your free-form notes automatically (bring your own key - "
+            "see the README's '/quiz' section).",
+            expand=False,
+        ))
+        input("Press Enter to continue...")
+        return
+
+    mode = "flashcards"
+    if flashcards and ai_available:
+        mode = Prompt.ask("[yellow]Quiz mode[/yellow]", choices=["flashcards", "ai"], default="flashcards")
+    elif ai_available and not flashcards:
+        mode = "ai"
+
+    questions = flashcards
+    if mode == "ai":
+        notes_text = quiz.collect_notes_text(user_folder, subject)
+        generated, err = animations.with_spinner(
+            console, "🤖 Generating quiz questions...", quiz.generate_ai_questions, subject, notes_text
+        )
+        if err:
+            console.print(f"[red]❌ {err}[/red]")
+            if not flashcards:
+                input("Press Enter to continue...")
+                return
+            console.print("[yellow]Falling back to your flashcards instead.[/yellow]")
+            input("Press Enter to continue...")
+            mode = "flashcards"
+        else:
+            questions = generated
+
+    if not questions:
+        console.print("[yellow]Nothing to quiz on.[/yellow]")
+        input("Press Enter to continue...")
+        return
+
+    questions = list(questions)
+    random.shuffle(questions)
+    total = len(questions)
+    score = 0
+
+    console.print(Panel(f"[bold cyan]🎮 Quiz: {subject}[/bold cyan] ({mode}, {total} question(s))", expand=False))
+    input("Press Enter to start...")
+
+    for i, q in enumerate(questions, 1):
+        clear_screen()
+        console.print(Panel(f"[bold cyan]Question {i}/{total}[/bold cyan]", expand=False))
+        console.print(q["question"])
+        console.print()
+
+        if mode == "ai":
+            for idx, choice_text in enumerate(q["choices"], 1):
+                console.print(f"  {idx}. {choice_text}")
+            console.print()
+            answer = Prompt.ask("[yellow]Your answer[/yellow]", choices=[str(n) for n in range(1, len(q["choices"]) + 1)])
+            if int(answer) - 1 == q["answer_index"]:
+                score += 1
+                animations.celebrate(console, "Correct!")
+            else:
+                console.print(f"[red]❌ Not quite - the answer was: {q['choices'][q['answer_index']]}[/red]")
+                input("Press Enter to continue...")
+        else:
+            input("[dim]Press Enter to reveal the answer...[/dim]")
+            console.print(f"[cyan]A:[/cyan] {q['answer']}")
+            if Prompt.ask("[yellow]Did you get it right?[/yellow]", choices=["yes", "no"], default="yes") == "yes":
+                score += 1
+                console.print("[green]✅ Nice![/green]")
+            else:
+                console.print("[yellow]No worries - it'll come up again next time.[/yellow]")
+            input("Press Enter to continue...")
+
+    clear_screen()
+    pct = round(100 * score / total) if total else 0
+    console.print(Panel(f"[bold cyan]🏁 Quiz complete: {subject}[/bold cyan]", expand=False))
+    console.print(f"Score: {score}/{total} ({pct}%)")
+    if pct == 100:
+        animations.trophy_fireworks(console, "Perfect score!")
+    elif pct >= 80:
+        animations.pet_run(console, "Great job!")
+    input("Press Enter to continue...")
 
 
 def format_reactions(groups):
@@ -986,7 +1155,7 @@ def feed_menu():
                         console.print(f"[red]❌ {err}[/red]")
                     else:
                         if is_first_post:
-                            animations.celebrate(console, "Your first post is live on the feed!")
+                            animations.confetti_rain(console, "Your first post is live on the feed!")
                         else:
                             console.print("[green]✅ Posted![/green]")
                         refresh()
