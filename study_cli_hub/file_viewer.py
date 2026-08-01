@@ -1,10 +1,11 @@
 # file_viewer.py
-import os, csv, sys
+import os, csv, sys, subprocess, tempfile
 from rich.console import Console
-from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 from rich.prompt import Prompt
 from datetime import datetime
+from study_cli_hub.animations import cli_panel as Panel
 from study_cli_hub.error_handler import handle_error
 from study_cli_hub.paths import note_path
 
@@ -25,9 +26,98 @@ try:
 except:
     docx = None
 
+_ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
+
+
+def detect_binary_content(path, sample_size=8192):
+    """Best-effort check for whether a file's content is actually text, so a
+    misnamed/mislabeled file (e.g. a .numbers or .xlsx saved with a .csv
+    extension) shows a clear message instead of being rendered as garbled
+    text. Returns None if the content looks like real text, otherwise a
+    short human-readable reason string."""
+    try:
+        with open(path, "rb") as f:
+            sample = f.read(sample_size)
+    except OSError:
+        return None
+
+    if not sample:
+        return None
+
+    if sample.startswith(_ZIP_SIGNATURES):
+        return "it looks like a ZIP-based file (e.g. .xlsx, .numbers, .docx) saved with the wrong extension"
+    if sample.startswith(b"%PDF-"):
+        return "it looks like a PDF file saved with the wrong extension"
+    if b"\x00" in sample:
+        return "it contains null bytes, which real text files don't have"
+
+    # A real text file should decode cleanly as UTF-8 (or very close to it).
+    try:
+        sample.decode("utf-8")
+        return None
+    except UnicodeDecodeError:
+        pass
+
+    non_printable = sum(1 for b in sample if b < 9 or (13 < b < 32))
+    if non_printable / len(sample) > 0.05:
+        return "it contains a high proportion of non-text bytes"
+    return None
+
+
 def clear_screen():
     """Clear the terminal screen"""
     os.system("cls" if os.name == "nt" else "clear")
+
+
+def open_in_editor(initial_content=""):
+    """Open $VISUAL/$EDITOR on a temp file pre-filled with initial_content
+    and return the edited text - the same pattern git/crontab use for
+    editing. Falls back to a plain type-then-Ctrl+D prompt when no editor
+    is configured."""
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    if editor:
+        fd, tmp_path = tempfile.mkstemp(suffix=".md")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(initial_content)
+            console.print(f"[dim]Opening in {editor}...[/dim]")
+            subprocess.run([editor, tmp_path])
+            with open(tmp_path, "r", encoding="utf-8") as f:
+                return f.read()
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+    console.print("[dim]No $EDITOR/$VISUAL set - falling back to inline entry "
+                   "(set $EDITOR to use vim/nano/etc. instead).[/dim]")
+    console.print("[yellow]Type your content, then press Ctrl+D when done:[/yellow]")
+    if initial_content:
+        console.print(initial_content)
+        console.print("[dim]--- existing content shown above; typed lines below replace it ---[/dim]")
+    lines = []
+    try:
+        while True:
+            lines.append(input())
+    except EOFError:
+        pass
+    return "\n".join(lines) if lines else initial_content
+
+
+def print_nav_table(items, extra=None):
+    """Renders a viewer's key bindings as a compact table, meant to be
+    printed last so it sits pinned at the bottom of the screen right above
+    the key-press prompt. `items` is a list of (key, action) pairs; `extra`
+    is an optional trailing status line (e.g. active search term)."""
+    table = Table(show_header=False, box=None, padding=(0, 1, 0, 0))
+    table.add_column(style="bold yellow", no_wrap=True)
+    table.add_column(style="dim")
+    for key, action in items:
+        table.add_row(key, action)
+    console.print(table)
+    if extra:
+        console.print(extra)
 
 def get_key():
     """Cross-platform key input with improved navigation"""
@@ -48,82 +138,103 @@ def get_key():
             elif key == b' ': return ' '
             elif key == b'q': return 'q'
             elif key == b'/': return '/'
+            elif key == b':': return ':'
             elif key == b'h': return 'h'
             elif key == b'n': return 'n'
             elif key == b'p': return 'p'
             elif key == b't': return 't'
             elif key == b'g': return 'g'
+            elif key == b'G': return 'G'
             elif key == b'j': return 'j'
             elif key == b'k': return 'k'
             elif key == b'l': return 'l'
+            elif key == b'?': return '?'
             elif key == b'\r': return '\r'
     except ImportError:
         # Unix/Linux/Mac
         import termios, tty
+        if not sys.stdin.isatty():
+            return None
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:
-            tty.setraw(sys.stdin.fileno())
+            tty.setraw(fd)
             ch = sys.stdin.read(1)
             if ch == '\x1b':  # ESC sequence
-                ch += sys.stdin.read(2)
-                if ch == '[A': return '\x1b[A'  # Up arrow
-                elif ch == '[B': return '\x1b[B'  # Down arrow
-                elif ch == '[D': return '\x1b[D'  # Left arrow
-                elif ch == '[C': return '\x1b[C'  # Right arrow
-                elif ch == '[H': return '\x1b[H'  # Home
-                elif ch == '[F': return '\x1b[F'  # End
-                elif ch == '[5~': return '\x1b[5~'  # Page Up
-                elif ch == '[6~': return '\x1b[6~'  # Page Down
+                seq = sys.stdin.read(1)
+                if seq != '[':
+                    return None
+                third = sys.stdin.read(1)
+                if third in 'ABCDHF':
+                    # 3-byte sequences: ESC [ A/B/C/D/H/F
+                    return '\x1b[' + third
+                elif third in '56':
+                    # 4-byte sequences: ESC [ 5/6 ~  (Page Up/Down)
+                    fourth = sys.stdin.read(1)
+                    if fourth == '~':
+                        return '\x1b[' + third + fourth
+                return None
             elif ch == ' ': return ' '
             elif ch == 'q': return 'q'
             elif ch == '/': return '/'
+            elif ch == ':': return ':'
             elif ch == 'h': return 'h'
             elif ch == 'n': return 'n'
             elif ch == 'p': return 'p'
             elif ch == 't': return 't'
             elif ch == 'g': return 'g'
+            elif ch == 'G': return 'G'
             elif ch == 'j': return 'j'
             elif ch == 'k': return 'k'
             elif ch == 'l': return 'l'
+            elif ch == '?': return '?'
             elif ch == '\r': return '\r'
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     return None
 
-def interactive_text_reader(path, filename):
+def interactive_text_reader(path, filename, start_line=0):
     """Interactive text file reader with navigation and highlighting"""
+    reason = detect_binary_content(path)
+    if reason:
+        console.print(Panel(
+            f"[bold red]'{filename}' doesn't look like a real text file[/bold red]\n\n"
+            f"{reason}.\n\n"
+            "[dim]Use /repair or re-upload it with the correct extension to "
+            "view it properly.[/dim]",
+            expand=False,
+        ))
+        input("Press Enter to continue...")
+        return
+
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
-        
+
         highlighted = set()
         search_results = []
         search_index = 0
-        current_line = 0
+        current_line = max(0, min(start_line, len(lines) - 1)) if lines else 0
         lines_per_page = 20
-        
+
         while True:
             console.clear()
-            
+
             # Header
             header = f"[bold cyan]{filename}[/bold cyan] | Line {current_line + 1}/{len(lines)}"
             if search_results:
                 header += f" | Search: {len(search_results)} results"
             console.print(Panel(header, expand=False))
-            
-            # Help
-            console.print("[dim]↑↓: Scroll | PgUp/PgDn: Page | Space: Highlight | /: Search | h: Help | q: Quit[/dim]")
             console.print()
-            
+
             # Display lines
             start_line = max(0, current_line - lines_per_page // 2)
             end_line = min(len(lines), start_line + lines_per_page)
-            
+
             for i in range(start_line, end_line):
                 line_no = f"{i+1:>4}"
                 line_text = lines[i].rstrip()
-                
+
                 # Highlighting
                 if i in highlighted:
                     console.print(f"[bold black on yellow]{line_no} {line_text}[/bold black on yellow]")
@@ -131,11 +242,24 @@ def interactive_text_reader(path, filename):
                     console.print(f"[bold white on blue]{line_no} {line_text}[/bold white on blue]")
                 else:
                     console.print(f"[green]{line_no}[/green] {line_text}")
-            
+
             # Footer
             if current_line >= len(lines) - 1:
                 console.print("\n[bold yellow]End of file[/bold yellow]")
-            
+
+            console.print()
+            print_nav_table([
+                ("↑/↓ k/j", "Scroll line by line"),
+                ("PgUp/PgDn u/d", "Jump a page"),
+                ("g / G", "Go to beginning / end"),
+                (":", "Go to a specific line number"),
+                ("Space / h", "Highlight/unhighlight line"),
+                ("/", "Search in file"),
+                ("n / p", "Next / previous search result"),
+                ("?", "Help"),
+                ("q", "Quit"),
+            ])
+
             # Get user input
             key = get_key()
             if not key:
@@ -168,6 +292,13 @@ def interactive_text_reader(path, filename):
                     else:
                         console.print("[red]No results found[/red]")
                         input("Press Enter to continue...")
+            elif key == ':':  # Go to line
+                target = Prompt.ask("[yellow]Go to line number[/yellow]").strip()
+                if target.isdigit() and 1 <= int(target) <= len(lines):
+                    current_line = int(target) - 1
+                else:
+                    console.print(f"[red]Invalid line number! Choose 1-{len(lines)}[/red]")
+                    input("Press Enter to continue...")
             elif key == '?':  # Help
                 show_reader_help()
             elif key == 'q':  # Quit
@@ -191,17 +322,17 @@ def show_reader_help():
     console.clear()
     console.print(Panel("[bold cyan]Interactive Reader Help[/bold cyan]", expand=False))
     console.print()
-    console.print("[green]Navigation:[/green]")
-    console.print("  ↑/↓ or k/j    - Scroll line by line")
-    console.print("  PgUp/PgDn or u/d - Jump multiple lines")
-    console.print("  g/G           - Go to beginning/end")
-    console.print()
-    console.print("[yellow]Features:[/yellow]")
-    console.print("  SPACE or h    - Highlight/unhighlight current line")
-    console.print("  /             - Search for text in file")
-    console.print("  n/p           - Next/Previous search result")
-    console.print("  ?             - Show this help")
-    console.print("  q             - Quit reader")
+    print_nav_table([
+        ("↑/↓ k/j", "Scroll line by line"),
+        ("PgUp/PgDn u/d", "Jump a page"),
+        ("g / G", "Go to beginning / end"),
+        (":", "Go to a specific line number"),
+        ("Space / h", "Highlight/unhighlight current line"),
+        ("/", "Search for text in file"),
+        ("n / p", "Next / previous search result"),
+        ("?", "Show this help"),
+        ("q", "Quit reader"),
+    ])
     console.print()
     input("Press Enter to continue...")
 
@@ -227,20 +358,11 @@ def edit_file_with_reason(user_folder, subject, filename):
         console.print(Panel(f"[bold cyan]Editing: {filename}[/bold cyan]", expand=False))
         console.print(f"[dim]Reason: {reason}[/dim]")
         console.print()
-        console.print("[yellow]Current content:[/yellow]")
-        console.print(content)
-        console.print()
-        
-        # Get new content
-        console.print("[yellow]Enter new content (press Ctrl+D when done):[/yellow]")
-        new_content = ""
-        try:
-            while True:
-                line = input()
-                new_content += line + "\n"
-        except EOFError:
-            pass
-        
+
+        # Edit (via $EDITOR if set, otherwise inline) - pre-filled with the
+        # existing content so you're editing in place, not retyping the file
+        new_content = open_in_editor(content)
+
         # Save with reason tracking
         backup_path = path + f".backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         with open(backup_path, "w", encoding="utf-8") as f:
@@ -346,19 +468,19 @@ def validate_word_document(path):
         else:
             return False, f"Document error: {error_msg}", False, False
 
-def interactive_pdf_viewer(path, filename):
+def interactive_pdf_viewer(path, filename, start_page=0):
     """Interactive PDF viewer with navigation and search"""
     try:
         with open(path, "rb") as f:
             reader = PyPDF2.PdfReader(f)
             total_pages = len(reader.pages)
-            
+
             if total_pages == 0:
                 console.print("[red]PDF has no pages[/red]")
                 input("Press Enter to continue...")
                 return
-            
-            current_page = 0
+
+            current_page = max(0, min(start_page, total_pages - 1))
             search_term = ""
             search_results = []
             search_index = 0
@@ -425,16 +547,17 @@ def interactive_pdf_viewer(path, filename):
                     console.print(f"[red]Error reading page: {e}[/red]")
                 
                 console.print()
-                console.print("[cyan]Navigation:[/cyan]")
-                console.print("  [yellow]←/→[/yellow] Previous/Next page")
-                console.print("  [yellow]Home/End[/yellow] First/Last page")
-                console.print("  [yellow]/[/yellow] Search in document")
-                console.print("  [yellow]n[/yellow] Next search result")
-                console.print("  [yellow]p[/yellow] Previous search result")
-                console.print("  [yellow]q[/yellow] Quit viewer")
-                
+                print_nav_table([
+                    ("←/→ h/l", "Previous / next page"),
+                    ("Home/End g/G", "First / last page"),
+                    (":", "Go to a specific page number"),
+                    ("/", "Search in document"),
+                    ("n / p", "Next / previous search result"),
+                    ("q", "Quit"),
+                ])
+
                 key = get_key()
-                
+
                 if key == 'q':
                     break
                 elif key == '\x1b[D' or key == 'h':  # Left arrow or h
@@ -445,6 +568,13 @@ def interactive_pdf_viewer(path, filename):
                     current_page = 0
                 elif key == '\x1b[F' or key == 'G':  # End or G
                     current_page = total_pages - 1
+                elif key == ':':
+                    target = Prompt.ask("[yellow]Go to page number[/yellow]").strip()
+                    if target.isdigit() and 1 <= int(target) <= total_pages:
+                        current_page = int(target) - 1
+                    else:
+                        console.print(f"[red]Invalid page number! Choose 1-{total_pages}[/red]")
+                        input("Press Enter to continue...")
                 elif key == '/':
                     search_term = Prompt.ask("[yellow]Enter search term[/yellow]").strip()
                     if search_term:
@@ -480,19 +610,19 @@ def interactive_pdf_viewer(path, filename):
         console.print("[cyan]Try updating PyPDF2: pip install --upgrade PyPDF2[/cyan]")
         input("Press Enter to continue...")
 
-def interactive_docx_viewer(path, filename):
+def interactive_docx_viewer(path, filename, start_para=0):
     """Interactive DOCX viewer with navigation and search"""
     try:
         doc = docx.Document(path)
         paragraphs = [para for para in doc.paragraphs if para.text.strip()]
         tables = doc.tables
-        
+
         if not paragraphs and not tables:
             console.print("[yellow]Document appears to be empty[/yellow]")
             input("Press Enter to continue...")
             return
-        
-        current_para = 0
+
+        current_para = max(0, min(start_para, len(paragraphs) - 1)) if paragraphs else 0
         current_table = 0
         view_mode = "paragraphs"  # "paragraphs" or "tables"
         search_term = ""
@@ -544,17 +674,18 @@ def interactive_docx_viewer(path, filename):
                     console.print(f"Row {i+1}: {' | '.join(row_text)}")
             
             console.print()
-            console.print("[cyan]Navigation:[/cyan]")
-            console.print("  [yellow]←/→[/yellow] Previous/Next paragraph/table")
-            console.print("  [yellow]t[/yellow] Toggle between paragraphs and tables")
-            console.print("  [yellow]Home/End[/yellow] First/Last paragraph/table")
-            console.print("  [yellow]/[/yellow] Search in document")
-            console.print("  [yellow]n[/yellow] Next search result")
-            console.print("  [yellow]p[/yellow] Previous search result")
-            console.print("  [yellow]q[/yellow] Quit viewer")
-            
+            print_nav_table([
+                ("←/→ h/l", "Previous / next paragraph/table"),
+                ("t", "Toggle paragraphs / tables"),
+                ("Home/End g/G", "First / last"),
+                (":", "Go to a specific paragraph/table number"),
+                ("/", "Search in document"),
+                ("n / p", "Next / previous search result"),
+                ("q", "Quit"),
+            ])
+
             key = get_key()
-            
+
             if key == 'q':
                 break
             elif key == '\x1b[D' or key == 'h':  # Left arrow or h
@@ -577,6 +708,18 @@ def interactive_docx_viewer(path, filename):
                     current_para = len(paragraphs) - 1
                 else:
                     current_table = len(tables) - 1
+            elif key == ':':
+                count = len(paragraphs) if view_mode == "paragraphs" else len(tables)
+                label = "paragraph" if view_mode == "paragraphs" else "table"
+                target = Prompt.ask(f"[yellow]Go to {label} number[/yellow]").strip()
+                if target.isdigit() and 1 <= int(target) <= count:
+                    if view_mode == "paragraphs":
+                        current_para = int(target) - 1
+                    else:
+                        current_table = int(target) - 1
+                else:
+                    console.print(f"[red]Invalid {label} number! Choose 1-{count}[/red]")
+                    input("Press Enter to continue...")
             elif key == 't':
                 view_mode = "tables" if view_mode == "paragraphs" else "paragraphs"
                 if view_mode == "paragraphs":
@@ -632,87 +775,109 @@ def interactive_docx_viewer(path, filename):
         console.print(f"[red]Error reading DOCX: {e}[/red]")
         input("Press Enter to continue...")
 
-def interactive_csv_viewer(path, filename):
+def interactive_csv_viewer(path, filename, start_row=0):
     """Interactive CSV viewer with navigation and search"""
+    reason = detect_binary_content(path)
+    if reason:
+        console.print(Panel(
+            f"[bold red]'{filename}' doesn't look like a real CSV[/bold red]\n\n"
+            f"{reason}.\n\n"
+            "[dim]Re-export it as a plain-text CSV (or upload the original "
+            "file with its correct extension) to view it here.[/dim]",
+            expand=False,
+        ))
+        input("Press Enter to continue...")
+        return
+
     try:
         with open(path, "r", newline="", encoding="utf-8", errors="ignore") as f:
             reader = csv.reader(f)
             rows = list(reader)
-            
+
             if not rows:
                 console.print("[yellow]CSV file is empty[/yellow]")
                 input("Press Enter to continue...")
                 return
-            
+
+            header = rows[0]
+            data_rows = rows[1:] if len(rows) > 1 else []
+
+            rows_per_page = 10
             current_row = 0
-            rows_per_page = 15
+            if data_rows and start_row:
+                current_row = (max(0, min(start_row - 1, len(data_rows) - 1)) // rows_per_page) * rows_per_page
             search_term = ""
             search_results = []
             search_index = 0
-            
+
             while True:
                 clear_screen()
                 console.print(Panel(f"[bold cyan]📊 Interactive CSV Viewer[/bold cyan]", expand=False))
                 console.print(f"[yellow]File:[/yellow] {filename}")
-                console.print(f"[yellow]Total rows:[/yellow] {len(rows)}")
-                console.print(f"[yellow]Showing rows:[/yellow] {current_row + 1}-{min(current_row + rows_per_page, len(rows))}")
-                
+                console.print(f"[yellow]Total data rows:[/yellow] {len(data_rows)} (+1 header row)")
+                if data_rows:
+                    console.print(f"[yellow]Showing rows:[/yellow] {current_row + 1}-{min(current_row + rows_per_page, len(data_rows))}")
+
                 if search_term:
                     console.print(f"[yellow]Search:[/yellow] '{search_term}' ({len(search_results)} results)")
-                
+
                 console.print()
-                
-                # Display current rows
-                for i in range(current_row, min(current_row + rows_per_page, len(rows))):
-                    row = rows[i]
-                    row_text = []
-                    
-                    for cell in row:
-                        # Limit cell width and highlight search results
-                        cell_text = str(cell)[:15]
-                        if len(str(cell)) > 15:
-                            cell_text += "..."
-                        
-                        if search_term and search_term.lower() in str(cell).lower():
-                            cell_text = cell_text.replace(
-                                search_term, f"[bold red]{search_term}[/bold red]"
-                            )
-                        
-                        row_text.append(cell_text)
-                    
-                    # Highlight row number if it's a search result
-                    row_num = f"Row {i+1}"
-                    if search_term and any(search_term.lower() in str(cell).lower() for cell in row):
-                        row_num = f"[bold red]Row {i+1}[/bold red]"
-                    
-                    console.print(f"{row_num}: {' | '.join(row_text)}")
-                
+
+                table = Table(show_header=True, header_style="bold magenta")
+                table.add_column("Row", justify="right", width=6)
+                for col_idx, col_name in enumerate(header):
+                    table.add_column(col_name or f"Column {col_idx + 1}", overflow="fold")
+
+                for i in range(current_row, min(current_row + rows_per_page, len(data_rows))):
+                    row = data_rows[i]
+                    is_hit = bool(search_term) and any(search_term.lower() in str(c).lower() for c in row)
+                    row_label = f"[bold red]{i + 1}[/bold red]" if is_hit else str(i + 1)
+
+                    cells = []
+                    for col_idx in range(len(header)):
+                        cell = row[col_idx] if col_idx < len(row) else ""
+                        cell_text = str(cell)
+                        if search_term and search_term.lower() in cell_text.lower():
+                            cell_text = cell_text.replace(search_term, f"[bold red]{search_term}[/bold red]")
+                        cells.append(cell_text)
+                    table.add_row(row_label, *cells)
+
+                console.print(table)
+
                 console.print()
-                console.print("[cyan]Navigation:[/cyan]")
-                console.print("  [yellow]↑/↓[/yellow] Previous/Next page")
-                console.print("  [yellow]Home/End[/yellow] First/Last page")
-                console.print("  [yellow]/[/yellow] Search in CSV")
-                console.print("  [yellow]n[/yellow] Next search result")
-                console.print("  [yellow]p[/yellow] Previous search result")
-                console.print("  [yellow]q[/yellow] Quit viewer")
-                
+                print_nav_table([
+                    ("↑/↓ k/j", "Previous / next page"),
+                    ("Home/End g/G", "First / last page"),
+                    (":", "Go to a specific row number"),
+                    ("/", "Search in CSV"),
+                    ("n / p", "Next / previous search result"),
+                    ("q", "Quit"),
+                ])
+
                 key = get_key()
-                
+
                 if key == 'q':
                     break
                 elif key == '\x1b[A' or key == 'k':  # Up arrow or k
                     current_row = max(0, current_row - rows_per_page)
                 elif key == '\x1b[B' or key == 'j':  # Down arrow or j
-                    current_row = min(len(rows) - rows_per_page, current_row + rows_per_page)
+                    current_row = min(max(0, len(data_rows) - rows_per_page), current_row + rows_per_page)
                 elif key == '\x1b[H' or key == 'g':  # Home or g
                     current_row = 0
                 elif key == '\x1b[F' or key == 'G':  # End or G
-                    current_row = max(0, len(rows) - rows_per_page)
+                    current_row = max(0, len(data_rows) - rows_per_page)
+                elif key == ':':
+                    target = Prompt.ask("[yellow]Go to row number[/yellow]").strip()
+                    if target.isdigit() and 1 <= int(target) <= len(data_rows):
+                        current_row = ((int(target) - 1) // rows_per_page) * rows_per_page
+                    else:
+                        console.print(f"[red]Invalid row number! Choose 1-{len(data_rows)}[/red]")
+                        input("Press Enter to continue...")
                 elif key == '/':
                     search_term = Prompt.ask("[yellow]Enter search term[/yellow]").strip()
                     if search_term:
                         search_results = []
-                        for i, row in enumerate(rows):
+                        for i, row in enumerate(data_rows):
                             for cell in row:
                                 if search_term.lower() in str(cell).lower():
                                     search_results.append(i)
@@ -729,13 +894,15 @@ def interactive_csv_viewer(path, filename):
                 elif key == 'p' and search_results:
                     search_index = (search_index - 1) % len(search_results)
                     current_row = (search_results[search_index] // rows_per_page) * rows_per_page
-    
+
     except Exception as e:
         console.print(f"[red]Error reading CSV: {e}[/red]")
         input("Press Enter to continue...")
 
-def view_file_rich(user_folder, subject, filename, editable=False):
-    """Main file viewer function - handles ALL file types in CLI"""
+def view_file_rich(user_folder, subject, filename, editable=False, jump_to=None):
+    """Main file viewer function - handles ALL file types in CLI.
+    jump_to, when given, is a 1-based line/row/page/paragraph number to open
+    straight to (e.g. from a /search result) instead of the start of the file."""
     path = note_path(user_folder, subject, filename)
     
     if not os.path.exists(path):
@@ -752,7 +919,7 @@ def view_file_rich(user_folder, subject, filename, editable=False):
 
         # Text-based files (interactive reader)
         if ext in TEXT_EXTENSIONS:
-            interactive_text_reader(path, filename)
+            interactive_text_reader(path, filename, start_line=(jump_to - 1) if jump_to else 0)
             
         # PDF files
         elif ext == "pdf":
@@ -768,7 +935,7 @@ def view_file_rich(user_folder, subject, filename, editable=False):
                 return
             
             # Interactive PDF viewer
-            interactive_pdf_viewer(path, filename)
+            interactive_pdf_viewer(path, filename, start_page=(jump_to - 1) if jump_to else 0)
 
         # Word documents
         elif ext in ["doc", "docx"]:
@@ -844,11 +1011,11 @@ def view_file_rich(user_folder, subject, filename, editable=False):
             input("Press Enter to continue...")
             
             # Use interactive DOCX viewer
-            interactive_docx_viewer(path, filename)
+            interactive_docx_viewer(path, filename, start_para=(jump_to - 1) if jump_to else 0)
 
         # CSV files
         elif ext == "csv":
-            interactive_csv_viewer(path, filename)
+            interactive_csv_viewer(path, filename, start_row=jump_to or 0)
 
         # Image files
         elif ext in ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "svg", "webp"]:
