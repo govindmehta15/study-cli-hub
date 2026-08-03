@@ -8,6 +8,7 @@ from study_cli_hub.paths import (
     list_known_users,
     list_notes,
     list_subjects,
+    list_visible_subjects,
     subject_path,
 )
 
@@ -58,20 +59,23 @@ def _extract_chunks(path, ext):
 def _iter_targets(current_user_folder):
     """Yields (owner, subject, filename, path). owner is None for global
     subjects and the caller's own folder (both are "mine"); a real username
-    string means it's someone else's read-only content."""
+    string means it's someone else's read-only content - in which case any
+    subject they've marked private is skipped entirely (same convention
+    /explore follows: private just means "not searchable/browsable by
+    other people in this app")."""
 
-    def _walk(owner, folder):
-        for subject in list_subjects(folder):
+    def _walk(owner, folder, subjects):
+        for subject in subjects:
             for filename in list_notes(folder, subject):
                 yield owner, subject, filename, os.path.join(subject_path(folder, subject), filename)
 
     if current_user_folder:
-        yield from _walk(None, current_user_folder)
+        yield from _walk(None, current_user_folder, list_subjects(current_user_folder))
     for g in list_global_subjects():
         for filename in list_notes(None, g):
             yield None, g, filename, os.path.join(subject_path(None, g), filename)
     for u in list_known_users(exclude=current_user_folder):
-        yield from _walk(u, u)
+        yield from _walk(u, u, list_visible_subjects(u))
 
 
 def search_notes(term, current_user_folder):

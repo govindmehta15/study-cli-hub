@@ -56,5 +56,50 @@ def list_notes(user_folder, subject):
     path = subject_path(user_folder, subject)
     os.makedirs(path, exist_ok=True)
     files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
-    files = [f for f in files if not f.startswith(".") and f != "edit_log.txt"]
+    files = [f for f in files if not f.startswith(".") and f != "edit_log.txt" and f != VISIBILITY_FILE]
     return sorted(files)
+
+
+# --- Public/private subject visibility ------------------------------------
+#
+# This is an app-level convention, not real access control: a "private"
+# subject is simply skipped by /explore and /search when someone OTHER than
+# its owner is browsing. The files still live in this shared git repo, so
+# anyone who clones/browses the repo directly (or on GitHub) can still see
+# them - "private" here means "hidden from other people using this CLI",
+# not encrypted or permission-restricted.
+VISIBILITY_FILE = ".visibility"
+DEFAULT_VISIBILITY = "public"
+
+
+def get_visibility(user_folder, subject):
+    path = os.path.join(subject_path(user_folder, subject), VISIBILITY_FILE)
+    try:
+        with open(path, encoding="utf-8") as f:
+            value = f.read().strip().lower()
+            return value if value in ("public", "private") else DEFAULT_VISIBILITY
+    except OSError:
+        return DEFAULT_VISIBILITY
+
+
+def set_visibility(user_folder, subject, visibility):
+    assert visibility in ("public", "private")
+    path = os.path.join(subject_path(user_folder, subject), VISIBILITY_FILE)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(visibility)
+
+
+def list_visible_subjects(user_folder):
+    """Like list_subjects(), but for browsing someone ELSE's folder -
+    excludes anything they've marked private."""
+    return [s for s in list_subjects(user_folder) if get_visibility(user_folder, s) != "private"]
+
+
+def get_subject_description(user_folder, subject):
+    """Reads a subject's own description_<subject>.txt, if present."""
+    path = os.path.join(subject_path(user_folder, subject), f"description_{subject}.txt")
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as f:
+            return f.read().strip()
+    except OSError:
+        return ""

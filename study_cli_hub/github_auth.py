@@ -65,7 +65,24 @@ def is_configured():
 
 
 def login(console):
-    """Run the GitHub Device Flow and store the resulting token."""
+    """Run the GitHub Device Flow and store the resulting token.
+
+    Scope, guaranteed: this only ever reads/writes this app's own token
+    file (config_dir()/credentials.json). It never touches `gh`'s own auth
+    state, git's global/local config, your SSH keys, browser sessions, or
+    any other terminal - logging in or out here has zero effect anywhere
+    else on your machine."""
+    existing = load_token()
+    if existing:
+        console.print(Panel(
+            f"[yellow]Already connected as @{existing.get('login', 'unknown')} "
+            "(within this app only).[/yellow]\n\n"
+            "Run [bold]/logout[/bold] first if you want to switch accounts - "
+            "that only disconnects this app, nothing else.",
+            expand=False,
+        ))
+        return True
+
     if not is_configured():
         console.print(Panel(
             "[bold red]GitHub login isn't configured yet[/bold red]\n\n"
@@ -86,7 +103,7 @@ def login(console):
         )
         resp.raise_for_status()
         payload = resp.json()
-    except requests.RequestException as e:
+    except (requests.RequestException, ValueError) as e:
         console.print(f"[red]Could not reach GitHub: {e}[/red]")
         return False
 
@@ -96,11 +113,16 @@ def login(console):
     interval = payload.get("interval", 5)
     expires_in = payload.get("expires_in", 900)
 
+    token_file_path = os.path.join(config_dir(), "credentials.json")
     console.print(Panel(
-        f"[bold cyan]🔗 Connect your GitHub account[/bold cyan]\n\n"
-        f"1. Open [bold]{verification_uri}[/bold] in a browser\n"
-        f"2. Enter this code: [bold yellow]{user_code}[/bold yellow]\n\n"
-        f"[dim]Waiting for you to approve...[/dim]",
+        f"[bold cyan]🔗 Connect your GitHub account to CLI Study Hub[/bold cyan]\n\n"
+        f"1. Open [bold]{verification_uri}[/bold] in any browser (phone or laptop, doesn't need to be this machine)\n"
+        f"2. Enter this code: [bold yellow]{user_code}[/bold yellow]\n"
+        f"3. Click Approve\n\n"
+        f"[dim]This only signs you into this app. It stores its own token at "
+        f"{token_file_path} and never touches gh, git's global config, your "
+        f"SSH keys, or any other terminal/app session.[/dim]\n\n"
+        "[dim]Waiting for you to approve...[/dim]",
         expand=False,
     ))
 
@@ -119,9 +141,12 @@ def login(console):
                 timeout=15,
             )
             token_payload = token_resp.json()
-        except requests.RequestException as e:
-            console.print(f"[red]Could not reach GitHub: {e}[/red]")
-            return False
+        except (requests.RequestException, ValueError):
+            # A single transient network/response hiccup shouldn't abort
+            # the whole login while you're mid-approving in the browser -
+            # just retry on the next poll. Only the overall deadline
+            # (expires_in, checked by the while condition) gives up for real.
+            continue
 
         error = token_payload.get("error")
         if error == "authorization_pending":
@@ -162,8 +187,17 @@ def login(console):
 
 
 def logout(console):
+    """Clears only this app's own stored token. Does not sign you out of
+    GitHub itself, `gh`, git, your browser, or any other terminal/app -
+    there is nothing else here to log out of."""
+    if not load_token():
+        console.print("[yellow]Not logged in to CLI Study Hub - nothing to do.[/yellow]")
+        return
     clear_token()
-    console.print("[green]✅ Logged out of GitHub[/green]")
+    console.print(
+        "[green]✅ Logged out of CLI Study Hub.[/green] "
+        "[dim]Your GitHub account, gh CLI, and git credentials elsewhere are untouched.[/dim]"
+    )
 
 
 def whoami(console):
@@ -171,13 +205,7 @@ def whoami(console):
     if not token:
         console.print("[yellow]⚠️ Not logged in. Run /login to connect your GitHub account.[/yellow]")
         return
-    console.print(f"[cyan]👤 Logged in as:[/cyan] {token.get('login', 'unknown')}")
-
-
-def _authenticated_url(remote_url, access_token):
-    if remote_url.startswith("https://"):
-        return remote_url.replace("https://", f"https://x-access-token:{access_token}@", 1)
-    return remote_url
+    console.print(f"[cyan]👤 Logged in as:[/cyan] {token.get('login', 'unknown')} [dim](this app only)[/dim]")
 
 
 def git_pull(cwd=None):
@@ -191,26 +219,23 @@ def git_push(cwd=None):
 
 
 def _run_authenticated(git_args, cwd):
+    """Runs a git command, injecting the stored token via a one-shot
+    credential helper that lives only in this single subprocess call's
+    environment and command-line config override (`git -c ...`) - never
+    written to .git/config, ~/.gitconfig, the keychain, or anywhere else on
+    disk. Nothing persists after the call returns, and there's nothing left
+    behind even if the process were killed mid-operation. This also means
+    it can never touch `gh`'s own auth, SSH keys, or any other app/terminal
+    session - it's entirely local to this one command."""
     cwd = cwd or os.getcwd()
     token_data = load_token()
 
     if not token_data:
         return subprocess.run(git_args, capture_output=True, text=True, cwd=cwd)
 
-    remote_result = subprocess.run(
-        ["git", "remote", "get-url", "origin"], capture_output=True, text=True, cwd=cwd
-    )
-    if remote_result.returncode != 0:
-        return subprocess.run(git_args, capture_output=True, text=True, cwd=cwd)
+    env = dict(os.environ)
+    env["STUDY_CLI_HUB_GIT_TOKEN"] = token_data["access_token"]
+    credential_helper = '!f() { echo username=x-access-token; echo "password=$STUDY_CLI_HUB_GIT_TOKEN"; }; f'
 
-    original_url = remote_result.stdout.strip()
-    auth_url = _authenticated_url(original_url, token_data["access_token"])
-
-    if auth_url == original_url:
-        return subprocess.run(git_args, capture_output=True, text=True, cwd=cwd)
-
-    subprocess.run(["git", "remote", "set-url", "origin", auth_url], capture_output=True, text=True, cwd=cwd)
-    try:
-        return subprocess.run(git_args, capture_output=True, text=True, cwd=cwd)
-    finally:
-        subprocess.run(["git", "remote", "set-url", "origin", original_url], capture_output=True, text=True, cwd=cwd)
+    full_args = [git_args[0], "-c", f"credential.helper={credential_helper}"] + list(git_args[1:])
+    return subprocess.run(full_args, capture_output=True, text=True, cwd=cwd, env=env)

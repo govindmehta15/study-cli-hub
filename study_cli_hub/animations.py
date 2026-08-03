@@ -43,6 +43,46 @@ def typewriter(console, text, style=None, delay=0.012):
     console.print()
 
 
+def static_transition(console, frames=3, height=6):
+    """Old-CRT-style noise/static that briefly plays before the branded
+    startup banner appears - a quick 'tuning in' effect. No-op when
+    non-interactive (there's no final state to preserve for a transition)."""
+    if not is_interactive():
+        return
+    noise_chars = "#%&@*+~."
+    width = _term_width(console)
+    for _ in range(frames):
+        console.clear()
+        for _ in range(height):
+            console.print("".join(random.choice(noise_chars) if random.random() > 0.4 else " " for _ in range(width)))
+        time.sleep(0.05)
+    console.clear()
+
+
+def print_startup_banner(console, app_name="STUDY HUB", version="", tagline=""):
+    """Branded ASCII-art startup banner (big block-letter app name behind a
+    quick noise/static 'power-on' transition) - the same kind of moment
+    gh copilot/Claude Code use to open their own sessions. Degrades to one
+    plain line when non-interactive."""
+    if not is_interactive():
+        console.print(f"{app_name} {version}".strip())
+        return
+
+    static_transition(console)
+
+    try:
+        import pyfiglet
+        big_text = pyfiglet.figlet_format(app_name, font="slant").rstrip("\n")
+    except Exception:
+        big_text = app_name
+
+    body = "\n".join(f"[bold cyan]{line}[/bold cyan]" for line in big_text.splitlines())
+    footer = " ".join(part for part in (version, f"· {tagline}" if tagline else "") if part)
+    if footer:
+        body += f"\n\n[dim]{footer}[/dim]"
+    console.print(cli_panel(body, expand=False))
+
+
 def with_spinner(console, message, fn, *args, **kwargs):
     """Wraps a blocking call (git pull/push, a GraphQL request) with a
     classic rotating -\\|/ spinner + message when interactive. When not

@@ -23,11 +23,14 @@ class SlashCompleter(Completer):
             for name, args_hint, description in self.commands:
                 bare_name = name[1:]  # command without the leading "/"
                 if bare_name.lower().startswith(typed.lower()):
-                    display = name + (" " + args_hint if args_hint else "")
+                    # Just the command name in the dropdown itself (no
+                    # <bracket|syntax> clutter) - args_hint still drives the
+                    # "Usage: ..." message if you get it wrong, and shows up
+                    # in the full /help table.
                     yield Completion(
                         bare_name,
                         start_position=-len(typed),
-                        display=display,
+                        display=name,
                         display_meta=description,
                     )
             return
