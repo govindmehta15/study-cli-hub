@@ -24,29 +24,34 @@ from study_cli_hub.error_handler import handle_error
 from study_cli_hub.file_uploader import upload_file
 from study_cli_hub.file_viewer import open_in_editor, view_file_rich
 from study_cli_hub.paths import (
+    get_subject_description,
+    get_visibility,
     list_global_subjects,
     list_known_users,
     list_notes,
     list_subjects,
+    list_visible_subjects,
     note_path,
+    set_visibility,
     subject_path,
 )
+from study_cli_hub.tui import CaptureConsole, TuiShell
 
 console = Console()
 
 MAIN_COMMANDS = [
-    ("/study", "<name|number>", "Open a subject"),
+    ("/study", "a subject name or number", "Open a subject"),
     ("/create-subject", "", "Create a new subject"),
     ("/list", "", "Refresh the subjects list"),
     ("/switch-user", "", "Switch user folder or global mode"),
     ("/explore", "", "Explore other users' study content"),
-    ("/search", "<term>", "Full-text search your and others' notes"),
-    ("/quiz", "<subject|number>", "Quiz yourself (flashcards or AI-generated)"),
+    ("/search", "what to search for", "Full-text search your and others' notes"),
+    ("/quiz", "a subject name or number", "Quiz yourself (flashcards or AI-generated)"),
     ("/stats", "", "Show your subjects/notes/streak dashboard"),
     ("/leaderboard", "", "Rank all known users by streak/activity"),
     ("/digest", "", "See what's new since your last visit"),
     ("/feed", "", "Browse the global knowledge feed"),
-    ("/chat", "<username>", "Open an async chat with another user"),
+    ("/chat", "a GitHub username", "Open an async chat with another user"),
     ("/login", "", "Connect your GitHub account"),
     ("/logout", "", "Disconnect your GitHub account"),
     ("/whoami", "", "Show the connected GitHub account"),
@@ -56,51 +61,51 @@ MAIN_COMMANDS = [
 ]
 
 SUBJECT_COMMANDS = [
-    ("/read", "<note|number>", "Open a note in the interactive reader"),
-    ("/edit", "<note|number>", "Edit a note with reason tracking"),
+    ("/read", "a note name or number", "Open a note in the interactive reader"),
+    ("/edit", "a note name or number", "Edit a note with reason tracking"),
     ("/new-note", "", "Create a new note file"),
     ("/upload", "", "Upload a file via the file browser"),
-    ("/repair", "<path>", "Diagnose a Word document's issues"),
+    ("/repair", "a file path", "Diagnose a Word document's issues"),
     ("/help", "", "Show available commands"),
     ("/back", "", "Return to the subjects menu"),
 ]
 
 EXPLORE_COMMANDS = [
-    ("/open", "<name|number>", "Browse a user or global subject (read-only)"),
+    ("/open", "a subject name or number", "Browse a user or global subject (read-only)"),
     ("/help", "", "Show available commands"),
     ("/back", "", "Return to the main menu"),
 ]
 
 EXPLORE_USER_COMMANDS = [
-    ("/study", "<subject|number>", "Open one of their subjects"),
+    ("/study", "a subject name or number", "Open one of their subjects"),
     ("/help", "", "Show available commands"),
     ("/back", "", "Return to the users list"),
 ]
 
 EXPLORE_SUBJECT_COMMANDS = [
-    ("/read", "<note|number>", "Open a note in the interactive reader"),
+    ("/read", "a note name or number", "Open a note in the interactive reader"),
     ("/help", "", "Show available commands"),
     ("/back", "", "Return to their subjects"),
 ]
 
 FEED_COMMANDS = [
     ("/post", "", "Write a new post to the global feed"),
-    ("/comment", "<number> <text>", "Comment on a feed post"),
-    ("/react", "<number> <emoji>", "React to a post (e.g. /react 2 heart)"),
+    ("/comment", "a number, then your text", "Comment on a feed post"),
+    ("/react", "a number, then an emoji name", "React to a post (e.g. /react 2 heart)"),
     ("/refresh", "", "Reload the feed from GitHub"),
     ("/help", "", "Show available commands"),
     ("/back", "", "Return to the main menu"),
 ]
 
 SEARCH_COMMANDS = [
-    ("/open", "<number>", "Open a result in the reader"),
+    ("/open", "a result number", "Open a result in the reader"),
     ("/help", "", "Show available commands"),
     ("/back", "", "Return to the main menu"),
 ]
 
 CHAT_COMMANDS = [
-    ("/say", "<message>", "Send a message"),
-    ("/react", "<number> <emoji>", "React to a message (e.g. /react 1 laugh)"),
+    ("/say", "your message", "Send a message"),
+    ("/react", "a number, then an emoji name", "React to a message (e.g. /react 1 laugh)"),
     ("/refresh", "", "Check for new replies"),
     ("/help", "", "Show available commands"),
     ("/back", "", "Return to the main menu"),
@@ -169,7 +174,7 @@ def parse_command(raw):
     return name, arg
 
 
-def print_help(commands, title):
+def print_help(commands, title, console=console):
     table = Table(title=title, show_header=True, header_style="bold magenta")
     table.add_column("Command", style="cyan", width=20)
     table.add_column("Args", style="dim", width=16)
@@ -360,8 +365,20 @@ def create_subject(user_folder):
         if not description:
             description = f"Notes for {name}"
 
+        visibility = "public"
+        if user_folder:
+            visibility = Prompt.ask(
+                "[yellow]Visible to other users via /explore and /search?[/yellow] "
+                "[dim](private just hides it from other people in this app - it's still in the shared git repo)[/dim]",
+                choices=["public", "private"],
+                default="public",
+            )
+
         console.print()
-        console.print(Panel(f"[bold]Name:[/bold] {name}\n[bold]Description:[/bold] {description}", title="Review", expand=False))
+        review = f"[bold]Name:[/bold] {name}\n[bold]Description:[/bold] {description}"
+        if user_folder:
+            review += f"\n[bold]Visibility:[/bold] {'🔒 private' if visibility == 'private' else '🌐 public'}"
+        console.print(Panel(review, title="Review", expand=False))
         if Prompt.ask("[yellow]Create this subject?[/yellow]", choices=["yes", "no"], default="yes") != "yes":
             console.print("[yellow]Cancelled.[/yellow]")
             return
@@ -371,6 +388,8 @@ def create_subject(user_folder):
         os.makedirs(path, exist_ok=True)
         with open(os.path.join(path, f"description_{name}.txt"), "w", encoding="utf-8") as f:
             f.write(description)
+        if user_folder:
+            set_visibility(user_folder, name, visibility)
 
         if is_first_subject:
             animations.rocket_launch(console, f"Your first subject, '{name}', is live!")
@@ -410,7 +429,7 @@ def create_new_note(user_folder, subject):
         handle_error(e)
 
 
-def display_subjects(subjects, user_folder=None):
+def display_subjects(subjects, user_folder=None, console=console):
     """Display subjects in a rich table"""
     if not subjects:
         console.print("[yellow]No subjects found. Create one with /create-subject[/yellow]")
@@ -464,7 +483,9 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     clear_screen()
-    animations.typewriter(console, "👋 Welcome to CLI Study Hub v5.0", style="bold green")
+    animations.print_startup_banner(
+        console, app_name="STUDY HUB", version="v5.0.1", tagline="slash-command study notebook"
+    )
     console.print()
 
     auto_git_sync()
@@ -476,6 +497,194 @@ def main():
     console.print()
     input("Press Enter to continue...")
 
+    # The fixed-layout TUI (pinned input + live completion + scrollable
+    # output, like Claude Code's/Copilot CLI's own UIs) needs a real
+    # terminal - prompt_toolkit's full-screen Application can't run against
+    # a plain pipe. Piped/scripted/non-tty use (including this project's
+    # own automated testing) falls back to the classic scrolling REPL,
+    # unchanged.
+    if sys.stdin.isatty():
+        _main_menu_tui(user_folder)
+    else:
+        _main_menu_classic(user_folder)
+
+
+def _main_menu_tui(user_folder):
+    """Main menu using the fixed-layout shell: a permanently pinned input
+    line at the bottom (with live '/' completion) and a scrollable output
+    pane above it. Diving into an actual feature (a subject, /explore,
+    /feed, ...) temporarily suspends this fixed layout to run that screen
+    exactly as it always has, then restores it on /back or /exit."""
+    state = {"user_folder": user_folder, "subjects": []}
+
+    def header_text():
+        who = "user: " + state["user_folder"] if state["user_folder"] else "global mode"
+        return f"🧠 STUDY HUB  ·  {who}"
+
+    capture = CaptureConsole()
+
+    def render_main_screen(shell):
+        capture.refresh_width()
+        state["subjects"] = list_subjects(state["user_folder"])
+        display_subjects(state["subjects"], state["user_folder"], console=capture.rich)
+        capture.rich.print()
+        print_help(MAIN_COMMANDS, "Commands (type / for live suggestions)", console=capture.rich)
+        shell.header_text = header_text()
+        shell.set_output(capture.pop_text())
+
+    def run_classic(shell, func):
+        """Suspends the fixed layout, runs `func` as a normal blocking
+        action against the real terminal, then redraws the main screen.
+
+        run_in_terminal() schedules `func` on the event loop and returns
+        immediately (it does not block) - so the redraw must happen in a
+        completion callback, not right after this call returns. Otherwise
+        it would run before `func` has actually executed and capture
+        stale state (e.g. missing a /switch-user update)."""
+        def wrapped():
+            try:
+                func()
+            except Exception as e:
+                handle_error(e)
+                input("Press Enter to continue...")
+        future = shell.run_in_terminal(wrapped)
+        future.add_done_callback(lambda f: render_main_screen(shell))
+
+    def handle_submit(shell, raw):
+        name, arg = parse_command(raw)
+        if name is None:
+            return
+
+        if name in ("/exit", "/quit"):
+            shell.exit()
+            return
+
+        elif name == "/switch-user":
+            def _switch_user():
+                new_user = Prompt.ask("[yellow]Enter new username (or press Enter for Global)[/yellow]").strip()
+                state["user_folder"] = new_user if new_user else None
+                console.print(f"[green]✅ Switched to {'user: ' + state['user_folder'] if state['user_folder'] else 'global mode'}[/green]")
+                input("Press Enter to continue...")
+            run_classic(shell, _switch_user)
+
+        elif name == "/create-subject":
+            run_classic(shell, lambda: (create_subject(state["user_folder"]), input("Press Enter to continue...")))
+
+        elif name == "/list":
+            render_main_screen(shell)
+
+        elif name == "/login":
+            run_classic(shell, lambda: (github_auth.login(console), input("Press Enter to continue...")))
+
+        elif name == "/logout":
+            run_classic(shell, lambda: (github_auth.logout(console), input("Press Enter to continue...")))
+
+        elif name == "/whoami":
+            run_classic(shell, lambda: (github_auth.whoami(console), input("Press Enter to continue...")))
+
+        elif name == "/sync":
+            run_classic(shell, lambda: (auto_git_sync(), auto_git_push(), input("Press Enter to continue...")))
+
+        elif name == "/help":
+            run_classic(shell, lambda: (print_help(MAIN_COMMANDS, "Main Menu Commands"), input("Press Enter to continue...")))
+
+        elif name in ("/study", "/learn"):
+            if not arg:
+                run_classic(shell, lambda: (
+                    console.print("[red]Type /study followed by a subject name or number[/red]"),
+                    input("Press Enter to continue..."),
+                ))
+                return
+            subject = resolve_choice(state["subjects"], arg, kind="subject")
+            if subject:
+                run_classic(shell, lambda: subject_menu(state["user_folder"], subject))
+            else:
+                render_main_screen(shell)
+
+        elif name == "/explore":
+            run_classic(shell, lambda: explore_menu(state["user_folder"]))
+
+        elif name == "/search":
+            if not arg:
+                run_classic(shell, lambda: (
+                    console.print("[red]Type /search followed by what you want to find[/red]"),
+                    input("Press Enter to continue..."),
+                ))
+                return
+            run_classic(shell, lambda: search_menu(state["user_folder"], arg))
+
+        elif name == "/quiz":
+            if not arg:
+                run_classic(shell, lambda: (
+                    console.print("[red]Type /quiz followed by a subject name or number[/red]"),
+                    input("Press Enter to continue..."),
+                ))
+                return
+            subject = resolve_choice(state["subjects"], arg, kind="subject")
+            if subject:
+                run_classic(shell, lambda: quiz_menu(state["user_folder"], subject))
+            else:
+                render_main_screen(shell)
+
+        elif name == "/stats":
+            if not state["user_folder"]:
+                run_classic(shell, lambda: (
+                    console.print("[yellow]Stats/streaks need a personal user folder - /switch-user to one first.[/yellow]"),
+                    input("Press Enter to continue..."),
+                ))
+                return
+            run_classic(shell, lambda: (show_stats(state["user_folder"]), input("Press Enter to continue...")))
+
+        elif name == "/leaderboard":
+            run_classic(shell, lambda: (show_leaderboard(), input("Press Enter to continue...")))
+
+        elif name == "/digest":
+            if not community.is_logged_in():
+                run_classic(shell, lambda: (
+                    console.print("[yellow]Run /login first to see your digest.[/yellow]"),
+                    input("Press Enter to continue..."),
+                ))
+                return
+            run_classic(shell, lambda: (show_digest(), input("Press Enter to continue...")))
+
+        elif name == "/feed":
+            run_classic(shell, feed_menu)
+
+        elif name == "/chat":
+            if not arg:
+                run_classic(shell, lambda: (
+                    console.print("[red]Type /chat followed by a GitHub username[/red]"),
+                    input("Press Enter to continue..."),
+                ))
+                return
+            run_classic(shell, lambda: chat_menu(arg))
+
+        else:
+            run_classic(shell, lambda: (
+                console.print("[red]Unknown command. Type / to see the available commands.[/red]"),
+                input("Press Enter to continue..."),
+            ))
+
+    shell = TuiShell(
+        completer=SlashCompleter(MAIN_COMMANDS),
+        on_submit=lambda raw: handle_submit(shell, raw),
+        header_text=header_text(),
+        hint_text=" Ctrl+C Exit  ·  / Commands  ·  /help Help ",
+    )
+    render_main_screen(shell)
+    shell.run()
+
+    clear_screen()
+    animations.typewriter(console, "👋 Thanks for using CLI Study Hub!", style="bold green")
+    global auto_push_done
+    auto_push_done = True
+    auto_git_push()
+
+
+def _main_menu_classic(user_folder):
+    """Classic clear-and-reprint REPL main menu - the non-tty fallback for
+    piped/scripted use (this project's own automated testing included),
+    since the fixed-layout TUI requires a real terminal."""
     prompt = SlashPrompt(MAIN_COMMANDS)
 
     while True:
@@ -534,7 +743,7 @@ def main():
 
             elif name == "/study" or name == "/learn":
                 if not arg:
-                    console.print("[red]Usage: /study <name|number>[/red]")
+                    console.print("[red]Type /study followed by a subject name or number[/red]")
                     input("Press Enter to continue...")
                     continue
                 subject = resolve_choice(subjects, arg, kind="subject")
@@ -546,14 +755,14 @@ def main():
 
             elif name == "/search":
                 if not arg:
-                    console.print("[red]Usage: /search <term>[/red]")
+                    console.print("[red]Type /search followed by what you want to find[/red]")
                     input("Press Enter to continue...")
                     continue
                 search_menu(user_folder, arg)
 
             elif name == "/quiz":
                 if not arg:
-                    console.print("[red]Usage: /quiz <subject|number>[/red]")
+                    console.print("[red]Type /quiz followed by a subject name or number[/red]")
                     input("Press Enter to continue...")
                     continue
                 subject = resolve_choice(subjects, arg, kind="subject")
@@ -585,7 +794,7 @@ def main():
 
             elif name == "/chat":
                 if not arg:
-                    console.print("[red]Usage: /chat <github-username>[/red]")
+                    console.print("[red]Type /chat followed by a GitHub username[/red]")
                     input("Press Enter to continue...")
                     continue
                 chat_menu(arg)
@@ -624,7 +833,7 @@ def subject_menu(user_folder, subject):
 
             elif name == "/read":
                 if not arg:
-                    console.print("[red]Usage: /read <note|number>[/red]")
+                    console.print("[red]Type /read followed by a note name or number[/red]")
                     input("Press Enter to continue...")
                     continue
                 filename = resolve_choice(notes, arg, kind="note")
@@ -633,7 +842,7 @@ def subject_menu(user_folder, subject):
 
             elif name == "/edit":
                 if not arg:
-                    console.print("[red]Usage: /edit <note|number>[/red]")
+                    console.print("[red]Type /edit followed by a note name or number[/red]")
                     input("Press Enter to continue...")
                     continue
                 filename = resolve_choice(notes, arg, kind="note")
@@ -651,7 +860,7 @@ def subject_menu(user_folder, subject):
 
             elif name == "/repair":
                 if not arg:
-                    console.print("[red]Usage: /repair <path-to-document>[/red]")
+                    console.print("[red]Type /repair followed by the path to a document[/red]")
                     input("Press Enter to continue...")
                     continue
                 repair_document(arg)
@@ -685,7 +894,7 @@ def explore_menu(current_user_folder):
         candidates = []
         for kind, name_ in combined_entries():
             if kind == "user":
-                candidates.append((name_, f"👤 user - {len(list_subjects(name_))} subject(s)"))
+                candidates.append((name_, f"👤 user - {len(list_visible_subjects(name_))} subject(s)"))
             else:
                 candidates.append((name_, f"🌍 global subject - {len(list_notes(None, name_))} note(s)"))
         return candidates
@@ -702,14 +911,18 @@ def explore_menu(current_user_folder):
             else:
                 table = Table(show_header=True, header_style="bold magenta")
                 table.add_column("No.", justify="right", width=4)
-                table.add_column("Name", width=26)
-                table.add_column("Type", width=18)
-                table.add_column("Contains", justify="right", width=14)
+                table.add_column("Name", width=20)
+                table.add_column("Type", width=16)
+                table.add_column("Contains", justify="right", width=12)
+                table.add_column("About", width=28)
                 for i, (kind, name_) in enumerate(entries, 1):
                     if kind == "user":
-                        table.add_row(str(i), name_, "👤 User", f"{len(list_subjects(name_))} subjects")
+                        visible = list_visible_subjects(name_)
+                        about = ", ".join(visible[:3]) + ("…" if len(visible) > 3 else "") if visible else "[dim]nothing public yet[/dim]"
+                        table.add_row(str(i), name_, "👤 User", f"{len(visible)} subjects", about)
                     else:
-                        table.add_row(str(i), name_, "🌍 Global subject", f"{len(list_notes(None, name_))} notes")
+                        desc = get_subject_description(None, name_) or "[dim]no description[/dim]"
+                        table.add_row(str(i), name_, "🌍 Global subject", f"{len(list_notes(None, name_))} notes", desc[:60])
                 console.print(table)
             console.print()
             print_help(EXPLORE_COMMANDS, "Commands (type / for live suggestions)")
@@ -725,7 +938,7 @@ def explore_menu(current_user_folder):
                 input("Press Enter to continue...")
             elif name == "/open":
                 if not arg:
-                    console.print("[red]Usage: /open <name|number>[/red]")
+                    console.print("[red]Type /open followed by a name or number[/red]")
                     input("Press Enter to continue...")
                     continue
                 names_only = [n for _, n in entries]
@@ -751,8 +964,20 @@ def explore_user_menu(target_user):
     while True:
         try:
             clear_screen()
-            subjects = list_subjects(target_user)
-            display_subjects(subjects, target_user)
+            subjects = list_visible_subjects(target_user)
+            console.print(Panel(f"[bold cyan]👤 @{target_user}'s public subjects[/bold cyan]", expand=False))
+            if not subjects:
+                console.print("[yellow]Nothing public here yet.[/yellow]")
+            else:
+                table = Table(show_header=True, header_style="bold magenta")
+                table.add_column("No.", justify="right", width=4)
+                table.add_column("Subject", width=24)
+                table.add_column("Notes", justify="right", width=8)
+                table.add_column("About", width=40)
+                for i, s in enumerate(subjects, 1):
+                    desc = get_subject_description(target_user, s) or "[dim]no description[/dim]"
+                    table.add_row(str(i), s, str(len(list_notes(target_user, s))), desc[:60])
+                console.print(table)
             console.print()
             print_help(EXPLORE_USER_COMMANDS, "Commands (type / for live suggestions)")
 
@@ -767,7 +992,7 @@ def explore_user_menu(target_user):
                 input("Press Enter to continue...")
             elif name == "/study":
                 if not arg:
-                    console.print("[red]Usage: /study <subject|number>[/red]")
+                    console.print("[red]Type /study followed by a subject name or number[/red]")
                     input("Press Enter to continue...")
                     continue
                 subject = resolve_choice(subjects, arg, kind="subject")
@@ -804,7 +1029,7 @@ def explore_subject_menu(target_user, subject):
                 input("Press Enter to continue...")
             elif name == "/read":
                 if not arg:
-                    console.print("[red]Usage: /read <note|number>[/red]")
+                    console.print("[red]Type /read followed by a note name or number[/red]")
                     input("Press Enter to continue...")
                     continue
                 filename = resolve_choice(notes, arg, kind="note")
@@ -1162,7 +1387,7 @@ def feed_menu():
                 input("Press Enter to continue...")
             elif name == "/comment":
                 if not arg or " " not in arg:
-                    console.print("[red]Usage: /comment <number> <text>[/red]")
+                    console.print("[red]Type /comment followed by a number, then your text[/red]")
                     input("Press Enter to continue...")
                     continue
                 index_str, text = arg.split(" ", 1)
@@ -1181,14 +1406,14 @@ def feed_menu():
             elif name == "/react":
                 parts = arg.split(" ", 1)
                 if len(parts) != 2:
-                    console.print("[red]Usage: /react <number> <thumbsup|heart|laugh|hooray|confused|rocket|eyes>[/red]")
+                    console.print("[red]Type /react followed by a number, then an emoji name (thumbsup, heart, laugh, hooray, confused, rocket, or eyes)[/red]")
                     input("Press Enter to continue...")
                     continue
                 index_str, emoji_name = parts
                 content = community.normalize_reaction(emoji_name)
                 target, kind = resolve_feed_target(items, index_str)
                 if not target or not content:
-                    console.print("[red]Usage: /react <post-number>[.<comment-number>] <emoji>[/red]")
+                    console.print("[red]Type /react followed by a post number (or post.comment, e.g. 2.1), then an emoji name[/red]")
                     input("Press Enter to continue...")
                     continue
                 currently = community.has_reacted(target, content)
@@ -1273,7 +1498,7 @@ def chat_menu(other_username):
                 refresh()
             elif name == "/say":
                 if not arg:
-                    console.print("[red]Usage: /say <message>[/red]")
+                    console.print("[red]Type /say followed by your message[/red]")
                     input("Press Enter to continue...")
                     continue
                 if not thread.get("id"):
@@ -1289,7 +1514,7 @@ def chat_menu(other_username):
                 parts = arg.split(" ", 1)
                 messages = thread["comments"]["nodes"]
                 if len(parts) != 2 or not parts[0].isdigit() or not (1 <= int(parts[0]) <= len(messages)):
-                    console.print("[red]Usage: /react <message-number> <thumbsup|heart|laugh|hooray|confused|rocket|eyes>[/red]")
+                    console.print("[red]Type /react followed by a message number, then an emoji name (thumbsup, heart, laugh, hooray, confused, rocket, or eyes)[/red]")
                     input("Press Enter to continue...")
                     continue
                 index_str, emoji_name = parts
