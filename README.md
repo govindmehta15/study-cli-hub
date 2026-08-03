@@ -282,6 +282,24 @@ GitHub logs that it happened). The rule still does its job of blocking
 without review; add a second collaborator as a code owner if you want actual
 second-person review on your own changes too.
 
+### Your own day-to-day push workflow
+
+`git push` on `main` always fails with `GH006: Protected branch update
+failed` — that's the protection working as intended, not a bug. Push a
+branch and open a PR instead:
+
+```bash
+git checkout -b my-change
+git push -u origin my-change
+gh pr create --fill
+gh pr merge --admin --squash   # the admin-bypass button, from the CLI
+```
+
+`--admin` is the same "merge without waiting for requirements" bypass
+mentioned above — only works because you're a repo admin, and GitHub logs
+that it was used. Skip `--admin` (just `gh pr merge --squash`) if you've
+added a second code owner and want their real review first.
+
 ---
 
 ## 📦 Publishing a new release (maintainers)
