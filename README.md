@@ -273,14 +273,14 @@ the maintainer's own — enforced via GitHub branch protection with
 everything else needs a real review.
 
 One unavoidable GitHub limitation to know about: with a single collaborator
-on the repo, there's nobody else who *can* approve your own code PRs.
-GitHub's answer to this is the same for every solo-maintainer OSS project —
-repo admins get a "merge without waiting for requirements" button on their
-own PRs (a deliberate bypass, not a silent one: you have to click it, and
-GitHub logs that it happened). The rule still does its job of blocking
-*direct pushes* and blocking *everyone else's* code changes from merging
-without review; add a second collaborator as a code owner if you want actual
-second-person review on your own changes too.
+on the repo, there's nobody else who *can* approve your own code PRs. This
+repo has `enforce_admins` turned **on**, so — unlike the usual
+solo-maintainer OSS pattern — there is *no* admin-bypass button here either:
+`gh pr merge --admin` is flatly rejected with "Waiting on code owner
+review," the same as anyone else's PR. That's deliberate (real second-person
+review on every code change, no exceptions), but it does mean **every
+code PR needs an actual approval from a `@govindmehta15`/`@govind-m15`
+review before it can merge** — plan for that, don't expect to self-merge.
 
 ### Your own day-to-day push workflow
 
@@ -292,13 +292,14 @@ branch and open a PR instead:
 git checkout -b my-change
 git push -u origin my-change
 gh pr create --fill
-gh pr merge --admin --squash   # the admin-bypass button, from the CLI
+# then get it reviewed/approved by a code owner before merging:
+gh pr merge --squash
 ```
 
-`--admin` is the same "merge without waiting for requirements" bypass
-mentioned above — only works because you're a repo admin, and GitHub logs
-that it was used. Skip `--admin` (just `gh pr merge --squash`) if you've
-added a second code owner and want their real review first.
+If you want a true self-mergeable admin bypass in the future, that requires
+turning `enforce_admins` off in branch protection settings first — a
+deliberate trade-off against the "no exceptions" review guarantee, so change
+it consciously rather than reaching for `--admin` expecting it to work.
 
 ---
 
