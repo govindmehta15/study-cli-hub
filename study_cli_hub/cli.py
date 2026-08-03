@@ -16,7 +16,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
-from study_cli_hub import animations, community, contribute, github_auth, local_state, quiz, search, stats
+from study_cli_hub import animations, community, contribute, exporter, github_auth, local_state, pomodoro, quiz, search, srs, stats
 from study_cli_hub.animations import cli_panel as Panel
 from study_cli_hub.completer import SlashCompleter
 from study_cli_hub.doc_repair import repair_document
@@ -50,6 +50,8 @@ MAIN_COMMANDS = [
     ("/stats", "", "Show your subjects/notes/streak dashboard"),
     ("/leaderboard", "", "Rank all known users by streak/activity"),
     ("/digest", "", "See what's new since your last visit"),
+    ("/pomodoro", "minutes, optional (default 25)", "Run a focus-session countdown timer"),
+    ("/export", "json or csv, optional (default json)", "Back up your subjects/notes/stats to a file"),
     ("/feed", "", "Browse the global knowledge feed"),
     ("/chat", "a GitHub username", "Open an async chat with another user"),
     ("/login", "", "Connect your GitHub account"),
@@ -647,6 +649,13 @@ def _main_menu_tui(user_folder):
                 return
             run_classic(shell, lambda: (show_digest(), input("Press Enter to continue...")))
 
+        elif name == "/pomodoro":
+            run_classic(shell, lambda: pomodoro_flow(_parse_pomodoro_minutes(arg)))
+
+        elif name == "/export":
+            fmt = arg.strip().lower() if arg and arg.strip().lower() == "csv" else "json"
+            run_classic(shell, lambda: export_flow(state["user_folder"], fmt))
+
         elif name == "/feed":
             run_classic(shell, feed_menu)
 
@@ -788,6 +797,14 @@ def _main_menu_classic(user_folder):
                     continue
                 show_digest()
                 input("Press Enter to continue...")
+
+            elif name == "/pomodoro":
+                minutes = _parse_pomodoro_minutes(arg)
+                pomodoro_flow(minutes)
+
+            elif name == "/export":
+                fmt = arg.strip().lower() if arg and arg.strip().lower() == "csv" else "json"
+                export_flow(user_folder, fmt)
 
             elif name == "/feed":
                 feed_menu()
@@ -1062,6 +1079,14 @@ def show_stats(user_folder):
     if data["last_active"]:
         streak_line += f" (last active {data['last_active']})"
     console.print(streak_line)
+
+    days = stats.daily_activity(user_folder, days=7)
+    day_labels = " ".join(datetime.strptime(d["date"], "%Y-%m-%d").strftime("%a")[0] for d in days)
+    day_bars = " ".join("█" if d["active"] else "░" for d in days)
+    console.print()
+    console.print(f"Last 7 days   {day_labels}")
+    console.print(f"              {day_bars}")
+
     if data["streak"] in STREAK_MILESTONES:
         animations.streak_fire(console, data["streak"], f"{data['streak']}-day streak! Keep it going!")
 
@@ -1128,6 +1153,40 @@ def show_digest():
 
     local_state.set_last_seen("feed", now.isoformat())
     local_state.set_last_seen("chat", now.isoformat())
+
+
+def _parse_pomodoro_minutes(arg):
+    if not arg:
+        return pomodoro.DEFAULT_MINUTES
+    try:
+        minutes = float(arg.strip())
+        return minutes if minutes > 0 else pomodoro.DEFAULT_MINUTES
+    except ValueError:
+        return pomodoro.DEFAULT_MINUTES
+
+
+def pomodoro_flow(minutes):
+    label = "Focus session"
+    completed = pomodoro.run_countdown(console, minutes=minutes, label=label)
+    if completed:
+        pomodoro.send_desktop_notification("CLI Study Hub", f"{label} complete - take a break!")
+        animations.celebrate(console, "Pomodoro complete - nice focus!")
+    input("Press Enter to continue...")
+
+
+def export_flow(user_folder, fmt):
+    data = exporter.build_export(user_folder)
+    who = user_folder or "global"
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    filename = f"study-hub-export-{who}-{timestamp}.{fmt}"
+    content = exporter.to_csv(data) if fmt == "csv" else exporter.to_json(data)
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(content)
+        console.print(f"[green]✅ Exported {len(data['subjects'])} subject(s) to {filename}[/green]")
+    except OSError as e:
+        console.print(f"[red]❌ Couldn't write {filename}: {e}[/red]")
+    input("Press Enter to continue...")
 
 
 def search_menu(user_folder, term):
@@ -1230,6 +1289,19 @@ def quiz_menu(user_folder, subject):
         input("Press Enter to continue...")
         return
 
+    srs_state = None
+    if mode == "flashcards":
+        srs_state = srs.load_state(user_folder, subject)
+        all_ids = [srs.card_id(q["question"]) for q in questions]
+        due_ids = set(srs.due_card_ids(srs_state, all_ids))
+        due_questions = [q for q, cid in zip(questions, all_ids) if cid in due_ids]
+        if due_questions and len(due_questions) < len(questions):
+            console.print(f"[cyan]📅 {len(due_questions)}/{len(questions)} card(s) due for review today.[/cyan]")
+            if Prompt.ask("[yellow]Study just the due cards?[/yellow]", choices=["yes", "no"], default="yes") == "yes":
+                questions = due_questions
+        elif due_questions:
+            questions = due_questions
+
     questions = list(questions)
     random.shuffle(questions)
     total = len(questions)
@@ -1258,12 +1330,23 @@ def quiz_menu(user_folder, subject):
         else:
             input("[dim]Press Enter to reveal the answer...[/dim]")
             console.print(f"[cyan]A:[/cyan] {q['answer']}")
-            if Prompt.ask("[yellow]Did you get it right?[/yellow]", choices=["yes", "no"], default="yes") == "yes":
+            quality = int(Prompt.ask(
+                "[yellow]How well did you recall it?[/yellow] (1=blackout, 3=hesitated, 5=perfect)",
+                choices=["1", "2", "3", "4", "5"], default="4",
+            ))
+            if srs_state is not None:
+                cid = srs.card_id(q["question"])
+                record = srs.review_card(srs_state, cid, quality)
+                console.print(f"[dim]Next review: {record['next_review_date']}[/dim]")
+            if quality >= 3:
                 score += 1
                 console.print("[green]✅ Nice![/green]")
             else:
-                console.print("[yellow]No worries - it'll come up again next time.[/yellow]")
+                console.print("[yellow]No worries - it'll come up again sooner next time.[/yellow]")
             input("Press Enter to continue...")
+
+    if srs_state is not None:
+        srs.save_state(user_folder, subject, srs_state)
 
     clear_screen()
     pct = round(100 * score / total) if total else 0

@@ -103,9 +103,12 @@ down as you keep typing — just like Claude Code's slash menu. Press `Tab` /
 | `/switch-user`               | Switch user folder or global mode        |
 | `/explore`                   | Explore other users' study content (read-only) |
 | `/search <term>`             | Full-text search your and others' notes  |
-| `/stats`                     | Show your subjects/notes/streak dashboard |
+| `/quiz <name\|number>`       | Quiz yourself: flashcards (with spaced repetition) or AI-generated |
+| `/stats`                     | Show your subjects/notes/streak dashboard (+ 7-day activity graph) |
 | `/leaderboard`               | Rank all known users by streak/activity  |
 | `/digest`                    | See what's new since your last visit     |
+| `/pomodoro [minutes]`        | Run a focus-session countdown (default 25 min) |
+| `/export [json\|csv]`        | Back up your subjects/notes/stats to a file |
 | `/feed`                      | Browse the global knowledge feed         |
 | `/chat <username>`           | Open an async chat with another user     |
 | `/login`                     | Connect your GitHub account              |
@@ -195,6 +198,33 @@ Two honest limitations:
   clone instructions already do. It's also not tamper-proof (nothing stops
   backdating a commit), which is fine for a casual gamification feature, not
   a strict requirement.
+
+---
+
+## 🃏 Flashcards, spaced repetition, focus timer & export
+
+`/quiz <subject>` picks up flashcards from any note with `Q: .../A: ...`
+lines — no setup needed. In flashcards mode, after you grade your own recall
+1 (blackout) to 5 (perfect), a simplified [SM-2](https://en.wikipedia.org/wiki/SuperMemo#Description_of_SM-2_algorithm)
+scheduler decides when that exact card should come back (a card you nail
+gets pushed days out; one you miss comes right back tomorrow). Scheduling
+state lives in a small `.srs_state.json` file per subject, git-synced
+alongside your notes — no database, same plain-file model as everything
+else here. If some cards are due and others aren't, `/quiz` offers to study
+just the due ones; if nothing's due yet, it lets you practice the full set
+anyway.
+
+`/pomodoro [minutes]` (default 25) runs a live countdown you can `Ctrl+C`
+out of early, then fires a best-effort desktop notification (macOS/Linux/
+Windows) plus a small celebration when it completes. It's a foreground
+countdown, not a background timer that ticks in a corner while you keep
+typing elsewhere — the fixed-layout TUI can't safely have something else
+write to the screen mid-render, so this is the safe fit for now.
+
+`/export [json|csv]` (default json) writes your subjects, notes, stats, and
+SRS progress to a plain file in your current directory — a portable backup
+that needs nothing but a text editor or spreadsheet to read, on purpose:
+this app never wants to be the only place your data can live.
 
 ---
 
@@ -329,10 +359,14 @@ study-cli-hub/
 │   ├── github_auth.py         # Device Flow login + token-authenticated git sync
 │   ├── community.py           # Feed/comments/chat/reactions via GitHub Discussions (permission-less, conflict-free)
 │   ├── search.py              # Full-text search across your and others' notes
-│   ├── stats.py                # git-log-derived streak/leaderboard stats (zero API calls)
+│   ├── stats.py                # git-log-derived streak/leaderboard/activity-graph stats (zero API calls)
+│   ├── srs.py                  # Simplified SM-2 spaced repetition for /quiz flashcards
+│   ├── pomodoro.py             # Focus-session countdown + best-effort desktop notification
+│   ├── exporter.py             # /export - JSON/CSV backup of subjects/notes/stats/SRS progress
 │   ├── local_state.py         # Personal, per-device "last seen" markers for /digest (not git-synced)
 │   ├── animations.py          # Typewriter/spinner/celebration primitives (degrade to plain output non-interactively)
 │   ├── contribute.py           # Fork + auto-PR fallback for non-collaborators (hassle-free app usage)
+│   ├── tui.py                  # Fixed-layout TUI shell (pinned input + toolbar) for the main menu
 │   ├── file_viewer.py         # Scrollable viewers (text/PDF/DOCX/CSV) with highlighting
 │   ├── file_uploader.py       # Interactive file browser + upload
 │   ├── doc_repair.py          # Word document diagnostics

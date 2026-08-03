@@ -52,3 +52,16 @@ def user_stats(user_folder, cwd=None):
 def all_user_stats(cwd=None):
     """For /leaderboard: zero GitHub API calls, purely local git + filesystem."""
     return [user_stats(u, cwd=cwd) for u in list_known_users()]
+
+
+def daily_activity(user_folder, days=7, cwd=None, today=None):
+    """Active/inactive per day for the last `days` days (oldest first), for
+    a terminal habit graph. A day with any commit reads as active - one big
+    study session and three small ones both show as a single filled bar,
+    which is the more honest daily signal than a raw commit tally."""
+    today = today or date.today()
+    dates = _user_commit_dates(user_folder, cwd=cwd)
+    return [
+        {"date": (today - timedelta(days=offset)).isoformat(), "active": (today - timedelta(days=offset)).isoformat() in dates}
+        for offset in range(days - 1, -1, -1)
+    ]
