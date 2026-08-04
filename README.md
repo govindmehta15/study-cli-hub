@@ -103,9 +103,12 @@ down as you keep typing — just like Claude Code's slash menu. Press `Tab` /
 | `/switch-user`               | Switch user folder or global mode        |
 | `/explore`                   | Explore other users' study content (read-only) |
 | `/search <term>`             | Full-text search your and others' notes  |
-| `/stats`                     | Show your subjects/notes/streak dashboard |
+| `/quiz <name\|number>`       | Quiz yourself: flashcards (with spaced repetition) or AI-generated |
+| `/stats`                     | Show your subjects/notes/streak dashboard (+ 7-day activity graph) |
 | `/leaderboard`               | Rank all known users by streak/activity  |
 | `/digest`                    | See what's new since your last visit     |
+| `/pomodoro [minutes]`        | Run a focus-session countdown (default 25 min) |
+| `/export [json\|csv]`        | Back up your subjects/notes/stats to a file |
 | `/feed`                      | Browse the global knowledge feed         |
 | `/chat <username>`           | Open an async chat with another user     |
 | `/login`                     | Connect your GitHub account              |
@@ -198,6 +201,33 @@ Two honest limitations:
 
 ---
 
+## 🃏 Flashcards, spaced repetition, focus timer & export
+
+`/quiz <subject>` picks up flashcards from any note with `Q: .../A: ...`
+lines — no setup needed. In flashcards mode, after you grade your own recall
+1 (blackout) to 5 (perfect), a simplified [SM-2](https://en.wikipedia.org/wiki/SuperMemo#Description_of_SM-2_algorithm)
+scheduler decides when that exact card should come back (a card you nail
+gets pushed days out; one you miss comes right back tomorrow). Scheduling
+state lives in a small `.srs_state.json` file per subject, git-synced
+alongside your notes — no database, same plain-file model as everything
+else here. If some cards are due and others aren't, `/quiz` offers to study
+just the due ones; if nothing's due yet, it lets you practice the full set
+anyway.
+
+`/pomodoro [minutes]` (default 25) runs a live countdown you can `Ctrl+C`
+out of early, then fires a best-effort desktop notification (macOS/Linux/
+Windows) plus a small celebration when it completes. It's a foreground
+countdown, not a background timer that ticks in a corner while you keep
+typing elsewhere — the fixed-layout TUI can't safely have something else
+write to the screen mid-render, so this is the safe fit for now.
+
+`/export [json|csv]` (default json) writes your subjects, notes, stats, and
+SRS progress to a plain file in your current directory — a portable backup
+that needs nothing but a text editor or spreadsheet to read, on purpose:
+this app never wants to be the only place your data can live.
+
+---
+
 ## 🔐 Connect your GitHub account
 
 Run `/login` once. It starts GitHub's **Device Flow**:
@@ -273,14 +303,14 @@ the maintainer's own — enforced via GitHub branch protection with
 everything else needs a real review.
 
 One unavoidable GitHub limitation to know about: with a single collaborator
-on the repo, there's nobody else who *can* approve your own code PRs.
-GitHub's answer to this is the same for every solo-maintainer OSS project —
-repo admins get a "merge without waiting for requirements" button on their
-own PRs (a deliberate bypass, not a silent one: you have to click it, and
-GitHub logs that it happened). The rule still does its job of blocking
-*direct pushes* and blocking *everyone else's* code changes from merging
-without review; add a second collaborator as a code owner if you want actual
-second-person review on your own changes too.
+on the repo, there's nobody else who *can* approve your own code PRs. This
+repo has `enforce_admins` turned **on**, so — unlike the usual
+solo-maintainer OSS pattern — there is *no* admin-bypass button here either:
+`gh pr merge --admin` is flatly rejected with "Waiting on code owner
+review," the same as anyone else's PR. That's deliberate (real second-person
+review on every code change, no exceptions), but it does mean **every
+code PR needs an actual approval from a `@govindmehta15`/`@govind-m15`
+review before it can merge** — plan for that, don't expect to self-merge.
 
 ### Your own day-to-day push workflow
 
@@ -292,13 +322,14 @@ branch and open a PR instead:
 git checkout -b my-change
 git push -u origin my-change
 gh pr create --fill
-gh pr merge --admin --squash   # the admin-bypass button, from the CLI
+# then get it reviewed/approved by a code owner before merging:
+gh pr merge --squash
 ```
 
-`--admin` is the same "merge without waiting for requirements" bypass
-mentioned above — only works because you're a repo admin, and GitHub logs
-that it was used. Skip `--admin` (just `gh pr merge --squash`) if you've
-added a second code owner and want their real review first.
+If you want a true self-mergeable admin bypass in the future, that requires
+turning `enforce_admins` off in branch protection settings first — a
+deliberate trade-off against the "no exceptions" review guarantee, so change
+it consciously rather than reaching for `--admin` expecting it to work.
 
 ---
 
@@ -328,10 +359,14 @@ study-cli-hub/
 │   ├── github_auth.py         # Device Flow login + token-authenticated git sync
 │   ├── community.py           # Feed/comments/chat/reactions via GitHub Discussions (permission-less, conflict-free)
 │   ├── search.py              # Full-text search across your and others' notes
-│   ├── stats.py                # git-log-derived streak/leaderboard stats (zero API calls)
+│   ├── stats.py                # git-log-derived streak/leaderboard/activity-graph stats (zero API calls)
+│   ├── srs.py                  # Simplified SM-2 spaced repetition for /quiz flashcards
+│   ├── pomodoro.py             # Focus-session countdown + best-effort desktop notification
+│   ├── exporter.py             # /export - JSON/CSV backup of subjects/notes/stats/SRS progress
 │   ├── local_state.py         # Personal, per-device "last seen" markers for /digest (not git-synced)
 │   ├── animations.py          # Typewriter/spinner/celebration primitives (degrade to plain output non-interactively)
 │   ├── contribute.py           # Fork + auto-PR fallback for non-collaborators (hassle-free app usage)
+│   ├── tui.py                  # Fixed-layout TUI shell (pinned input + toolbar) for the main menu
 │   ├── file_viewer.py         # Scrollable viewers (text/PDF/DOCX/CSV) with highlighting
 │   ├── file_uploader.py       # Interactive file browser + upload
 │   ├── doc_repair.py          # Word document diagnostics
