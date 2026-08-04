@@ -932,25 +932,36 @@ def explore_menu(current_user_folder):
         try:
             clear_screen()
             entries = combined_entries()
-            console.print(Panel("[bold cyan]🌍 Explore Everyone's Content[/bold cyan]", expand=False))
+            animations.section_reveal(console, "🌍 Explore Everyone's Content")
             if not entries:
                 console.print("[yellow]Nothing to explore yet.[/yellow]")
             else:
-                table = Table(show_header=True, header_style="bold magenta")
-                table.add_column("No.", justify="right", width=4)
-                table.add_column("Name", width=20)
-                table.add_column("Type", width=16)
-                table.add_column("Contains", justify="right", width=12)
-                table.add_column("About", width=28)
-                for i, (kind, name_) in enumerate(entries, 1):
-                    if kind == "user":
+                animations.row_shimmer(console)
+                users = [(i, name_) for i, (kind, name_) in enumerate(entries, 1) if kind == "user"]
+                globals_ = [(i, name_) for i, (kind, name_) in enumerate(entries, 1) if kind == "global"]
+
+                if users:
+                    user_table = Table(title="👤 Users", show_header=True, header_style="bold magenta")
+                    user_table.add_column("No.", justify="right", width=4)
+                    user_table.add_column("Name", width=20)
+                    user_table.add_column("Subjects", justify="right", width=10)
+                    user_table.add_column("About", width=40)
+                    for i, name_ in users:
                         visible = list_visible_subjects(name_)
                         about = ", ".join(visible[:3]) + ("…" if len(visible) > 3 else "") if visible else "[dim]nothing public yet[/dim]"
-                        table.add_row(str(i), name_, "👤 User", f"{len(visible)} subjects", about)
-                    else:
+                        user_table.add_row(str(i), name_, str(len(visible)), about)
+                    console.print(user_table)
+
+                if globals_:
+                    global_table = Table(title="🌍 Global Subjects", show_header=True, header_style="bold magenta")
+                    global_table.add_column("No.", justify="right", width=4)
+                    global_table.add_column("Name", width=20)
+                    global_table.add_column("Notes", justify="right", width=8)
+                    global_table.add_column("About", width=40)
+                    for i, name_ in globals_:
                         desc = get_subject_description(None, name_) or "[dim]no description[/dim]"
-                        table.add_row(str(i), name_, "🌍 Global subject", f"{len(list_notes(None, name_))} notes", desc[:60])
-                console.print(table)
+                        global_table.add_row(str(i), name_, str(len(list_notes(None, name_))), desc[:60])
+                    console.print(global_table)
             console.print()
             print_help(EXPLORE_COMMANDS, "Commands (type / for live suggestions)")
 
@@ -992,10 +1003,11 @@ def explore_user_menu(target_user):
         try:
             clear_screen()
             subjects = list_visible_subjects(target_user)
-            console.print(Panel(f"[bold cyan]👤 @{target_user}'s public subjects[/bold cyan]", expand=False))
+            animations.section_reveal(console, f"👤 @{target_user}'s public subjects")
             if not subjects:
                 console.print("[yellow]Nothing public here yet.[/yellow]")
             else:
+                animations.row_shimmer(console)
                 table = Table(show_header=True, header_style="bold magenta")
                 table.add_column("No.", justify="right", width=4)
                 table.add_column("Subject", width=24)
@@ -1041,6 +1053,10 @@ def explore_subject_menu(target_user, subject):
         try:
             clear_screen()
             notes = list_notes(target_user, subject)
+            title = f"📖 @{target_user}'s {subject}" if target_user else f"📖 {subject} (global)"
+            animations.section_reveal(console, title)
+            if notes:
+                animations.row_shimmer(console)
             display_notes(notes, subject)
             console.print()
             print_help(EXPLORE_SUBJECT_COMMANDS, "Commands (type / for live suggestions)")

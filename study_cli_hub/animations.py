@@ -104,7 +104,7 @@ def celebrate(console, message):
         console.print(f"🎉 {message}")
         return
     for frame in ["🎉", "✨", "🎊", "✨", "🎉"]:
-        console.print(f"\r{frame} {message}", end="")
+        console.print(f"{frame} {message}", end="\r")
         console.file.flush()
         time.sleep(0.08)
     console.print()
@@ -118,6 +118,52 @@ def _term_width(console):
     return max(20, (width or 60) - 12)
 
 
+def _term_height(console):
+    try:
+        height = console.size.height
+    except Exception:
+        height = 0
+    return max(6, (height or 24) - 10)
+
+
+def section_reveal(console, title, color="cyan"):
+    """Quick full-width wipe that reveals a section title - used when
+    entering a frequently-visited screen (like /explore's), so it stays
+    snappy (~0.15s total) rather than a slow one-off spectacle like the
+    milestone animations below. Degrades to printing `title` instantly."""
+    if not is_interactive():
+        console.print(f"[bold {color}]{title}[/bold {color}]")
+        return
+    # NOTE: a leading "\r" embedded in the text itself gets silently
+    # stripped by Rich's markup/Text parser (verified directly - even with
+    # no markup at all), so the carriage return has to go through `end=`
+    # instead, which Rich passes through raw. Every sweep/overwrite
+    # animation in this module follows this same pattern for that reason.
+    width = _term_width(console)
+    frames = 6
+    for i in range(1, frames + 1):
+        filled = int(width * i / frames)
+        console.print(f"[{color}]{'─' * filled}[/{color}]", end="\r")
+        console.file.flush()
+        time.sleep(0.012)
+    console.print()
+    console.print(f"[bold {color}]{title}[/bold {color}]")
+
+
+def row_shimmer(console, color="dim cyan"):
+    """Brief animated 'loading' placeholder shown just before a list/table
+    renders - an ambient touch for screens with nothing else animated.
+    Non-interactive: no-op, since there's no final state worth preserving
+    for a transition that's about to be immediately overwritten anyway."""
+    if not is_interactive():
+        return
+    for frame in ["▱▱▱▱", "▰▱▱▱", "▰▰▱▱", "▰▰▰▱", "▰▰▰▰"]:
+        console.print(f"[{color}]loading {frame}[/{color}]", end="\r")
+        console.file.flush()
+        time.sleep(0.035)
+    console.print(" " * 24, end="\r")
+
+
 def _sweep(console, message, sprite, color, step=2, delay=0.02):
     """Shared helper: slides `sprite` left-to-right across the terminal
     once, then prints the final message in `color`. Used by every
@@ -127,7 +173,7 @@ def _sweep(console, message, sprite, color, step=2, delay=0.02):
         return
     width = _term_width(console)
     for i in range(0, width, step):
-        console.print(f"\r{' ' * i}{sprite}", end="")
+        console.print(f"{' ' * i}{sprite}", end="\r")
         console.file.flush()
         time.sleep(delay)
     console.print()
@@ -136,8 +182,23 @@ def _sweep(console, message, sprite, color, step=2, delay=0.02):
 
 def rocket_launch(console, message):
     """Big-milestone animation: a rocket flies across the whole terminal
-    width. Used for the first subject you ever create."""
-    _sweep(console, message, "🚀", "cyan", step=2, delay=0.018)
+    width, leaving a two-row exhaust trail for a fuller, bigger feel than a
+    plain single-line sweep. Used for the first subject you ever create."""
+    if not is_interactive():
+        console.print(f"🚀 {message}")
+        return
+    width = _term_width(console)
+    trail_chars = "·∘○"
+    for i in range(0, width, 2):
+        console.print(f"{' ' * i}🚀", end="\r")
+        console.file.flush()
+        time.sleep(0.018)
+    console.print()
+    trail_width = min(width, 60)
+    for row in range(2):
+        console.print(f"[dim cyan]{''.join(random.choice(trail_chars) for _ in range(trail_width))}[/dim cyan]")
+        time.sleep(0.05)
+    console.print(f"[bold cyan]🚀 {message}[/bold cyan]")
 
 
 def pet_run(console, message, pet=None):
@@ -147,15 +208,18 @@ def pet_run(console, message, pet=None):
     _sweep(console, message, pet, "green", step=3, delay=0.02)
 
 
-def confetti_rain(console, message, rows=3):
+def confetti_rain(console, message, rows=None):
     """Falling confetti across a few full-width lines - for social/community
-    milestones (first feed post, first comment, etc.)."""
+    milestones (first feed post, first comment, etc.). Row count scales
+    with the terminal's own height (capped) instead of a fixed small
+    number, for a bigger, fuller burst on taller terminals."""
     if not is_interactive():
         console.print(f"🎉 {message}")
         return
     confetti = ["🎉", "🎊", "✨", "⭐", "💫", " ", " ", " "]
     width = _term_width(console)
-    for _ in range(rows):
+    row_count = rows if rows is not None else min(6, max(3, _term_height(console) // 4))
+    for _ in range(row_count):
         console.print("".join(random.choice(confetti) for _ in range(width // 2)))
         time.sleep(0.06)
     console.print(f"[bold magenta]🎉 {message}[/bold magenta]")
@@ -169,7 +233,7 @@ def streak_fire(console, streak_days, message):
         return
     intensity = min(5, max(1, streak_days // 10 + 1))
     for i in range(1, intensity + 1):
-        console.print(f"\r{'🔥' * i}", end="")
+        console.print("🔥" * i, end="\r")
         console.file.flush()
         time.sleep(0.12)
     console.print()
@@ -177,13 +241,20 @@ def streak_fire(console, streak_days, message):
 
 
 def trophy_fireworks(console, message):
-    """Fireworks building up to a trophy - for a perfect quiz score."""
+    """Fireworks building up to a trophy - for a perfect quiz score. Bursts
+    across a few full-width rows before the single-line build-up, for a
+    bigger, fuller celebration than a plain center-line sweep."""
     if not is_interactive():
         console.print(f"🏆 {message}")
         return
+    width = _term_width(console)
+    burst_chars = "🎆✨🎇⭐"
+    for _ in range(3):
+        console.print("".join(random.choice(burst_chars) if random.random() > 0.55 else " " for _ in range(width)))
+        time.sleep(0.12)
     frames = ["🎆", "✨ 🎆 ✨", "🎇 ✨ 🎆 ✨ 🎇", "🏆 ✨ 🎉 ✨ 🏆"]
     for frame in frames:
-        console.print(f"\r{frame.center(_term_width(console))}", end="")
+        console.print(frame.center(width), end="\r")
         console.file.flush()
         time.sleep(0.18)
     console.print()
@@ -225,7 +296,7 @@ def glitch_reveal(console, text, style="bold cyan", cycles=10, delay=0.02):
             ch if (ch == " " or i < settled) else random.choice(GLITCH_CHARS)
             for i, ch in enumerate(text)
         ]
-        console.print(f"\r{''.join(display)}", style=style, end="")
+        console.print("".join(display), style=style, end="\r")
         console.file.flush()
         time.sleep(delay)
     console.print()
@@ -255,10 +326,11 @@ def science_animation(console, subject_name, message):
         return True
     width = _term_width(console)
     for i in range(0, width, 4):
-        frame = "".join(random.choice(symbols) for _ in range(3))
-        console.print(f"\r{' ' * i}{frame}", end="")
+        frame = "".join(random.choice(symbols) for _ in range(5))
+        console.print(f"{' ' * i}{frame}", end="\r")
         console.file.flush()
         time.sleep(0.025)
     console.print()
+    console.print("".join(random.choice(symbols) for _ in range(width)), style=f"dim {color}")
     console.print(f"[bold {color}]{message}[/bold {color}]")
     return True
