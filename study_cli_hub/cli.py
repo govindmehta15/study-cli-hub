@@ -132,10 +132,20 @@ class SlashPrompt:
 
     def ask(self, message="Command"):
         if self._session is not None:
+            # in_thread=True: every sub-screen that uses SlashPrompt (subject
+            # menu, /explore, /search, /feed, /chat) is now reached through
+            # the main-menu TUI's run_in_terminal(), which means an asyncio
+            # loop is already running on this thread - PromptSession.prompt()
+            # normally calls asyncio.run() internally, which crashes with
+            # "cannot be called from a running event loop" in that case.
+            # in_thread=True is prompt_toolkit's own documented fix: it runs
+            # the prompt in a background thread with its own fresh loop, and
+            # works identically whether or not a loop is already running.
             return self._session.prompt(
                 f"{message} > ",
                 completer=self.completer,
                 complete_while_typing=True,
+                in_thread=True,
             ).strip()
         return Prompt.ask(f"[yellow]{message} (type / to see commands)[/yellow]").strip()
 
