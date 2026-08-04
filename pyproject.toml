@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "study-cli-hub"
-version = "5.0.1"
+dynamic = ["version"]
 description = "An interactive, slash-command CLI study notebook with GitHub-synced notes"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -44,3 +44,6 @@ study-hub = "study_cli_hub.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["study_cli_hub*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "study_cli_hub.__version__" }

@@ -16,7 +16,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
-from study_cli_hub import animations, community, contribute, exporter, github_auth, local_state, pomodoro, quiz, search, srs, stats
+from study_cli_hub import __version__, animations, community, contribute, exporter, github_auth, local_state, pomodoro, quiz, search, srs, stats
 from study_cli_hub.animations import cli_panel as Panel
 from study_cli_hub.completer import SlashCompleter
 from study_cli_hub.doc_repair import repair_document
@@ -486,7 +486,7 @@ def main():
 
     clear_screen()
     animations.print_startup_banner(
-        console, app_name="STUDY HUB", version="v5.0.1", tagline="slash-command study notebook"
+        console, app_name="STUDY HUB", version=f"v{__version__}", tagline="slash-command study notebook"
     )
     console.print()
 
